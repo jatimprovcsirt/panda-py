@@ -1,0 +1,109 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "panda-py"
+version = "0.1.0"
+description = "Private And Secure Data Access - Field-level encryption SDK for Python"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Dinas Komunikasi dan Informatika Provinsi Jawa Timur", email = "persandian@jatimprov.go.id"}
+]
+maintainers = [
+    {name = "Dinas Komunikasi dan Informatika Provinsi Jawa Timur", email = "persandian@jatimprov.go.id"}
+]
+keywords = ["encryption", "security", "gdpr", "pdp", "privacy", "aes-256-gcm"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security :: Cryptography",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    "cryptography>=41.0.0",
+    "click>=8.0.0",
+]
+
+[project.optional-dependencies]
+django = [
+    "django>=3.2",
+]
+flask = [
+    "flask>=2.0",
+]
+fastapi = [
+    "fastapi>=0.68.0",
+    "pydantic>=2.0.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+all = [
+    "panda-py[django,flask,fastapi,dev]",
+]
+
+[project.urls]
+Homepage = "https://github.com/jatimprovcsirt/panda-py"
+Documentation = "https://panda.jatimprovcsirt.go.id"
+Repository = "https://github.com/jatimprovcsirt/panda-py"
+Issues = "https://github.com/jatimprovcsirt/panda-py/issues"
+
+[project.scripts]
+panda = "panda.cli.commands:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py38", "py39", "py310", "py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --cov=panda --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
