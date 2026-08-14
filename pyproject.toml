@@ -10,10 +10,10 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
-    {name = "Dinas Komunikasi dan Informatika Provinsi Jawa Timur", email = "persandian@jatimprov.go.id"}
+    {name = "Bidang Persandian dan Keamanan Informasi - Dinas Komunikasi dan Informatika Provinsi Jawa Timur", email = "csirt@jatimprov.go.id"}
 ]
 maintainers = [
-    {name = "Dinas Komunikasi dan Informatika Provinsi Jawa Timur", email = "persandian@jatimprov.go.id"}
+    {name = "Bidang Persandian dan Keamanan Informasi - Dinas Komunikasi dan Informatika Provinsi Jawa Timur", email = "csirt@jatimprov.go.id"}
 ]
 keywords = ["encryption", "security", "gdpr", "pdp", "privacy", "aes-256-gcm"]
 classifiers = [

@@ -126,33 +126,174 @@ class VaultKeyProvider(KeyProvider):
     Key provider that fetches keys from HashiCorp Vault.
 
     Uses the Vault KV v2 secrets engine to retrieve encryption keys.
+    Supports two authentication methods:
+    1. Token-based authentication (vault_token)
+    2. AppRole authentication (role_id + secret_id with automatic token renewal)
+
     Keys are cached in memory to reduce API calls.
     """
 
     def __init__(
         self,
         vault_url: str,
-        vault_token: str,
+        vault_token: Optional[str] = None,
         mount_path: str = "secret",
-        timeout: int = 5
+        timeout: int = 5,
+        role_id: Optional[str] = None,
+        secret_id: Optional[str] = None,
+        auth_method: str = "token",
+        token_ttl: int = 3600,
+        cache_ttl: int = 300,
+        namespace: str = ""
     ):
         """
         Initialize the Vault key provider.
 
         Args:
             vault_url: URL of the Vault server (e.g., "http://localhost:8200")
-            vault_token: Vault token for authentication
+            vault_token: Vault token for authentication (for token-based auth)
             mount_path: Mount path of the KV v2 secrets engine (default: "secret")
             timeout: HTTP request timeout in seconds (default: 5)
+            role_id: AppRole Role ID (for AppRole authentication)
+            secret_id: AppRole Secret ID (for AppRole authentication)
+            auth_method: Authentication method ('token' or 'approle')
+            token_ttl: Token TTL in seconds for AppRole token renewal (default: 3600)
+            cache_ttl: Key cache TTL in seconds (default: 300)
+            namespace: Vault namespace (optional, for Enterprise)
         """
         self.vault_url = vault_url.rstrip("/")
-        self.vault_token = vault_token
         self.mount_path = mount_path.strip("/")
         self.timeout = timeout
-        self._cache: dict[str, bytes] = {}
+        self.namespace = namespace
+        self.token_ttl = token_ttl
+        self.cache_ttl = cache_ttl
+
+        # Determine auth method
+        # If both role_id and secret_id are provided, use AppRole
+        # Otherwise, use token-based auth
+        if role_id and secret_id:
+            self.auth_method = "approle"
+            self.role_id = role_id
+            self.secret_id = secret_id
+            self.vault_token = None
+        elif vault_token:
+            self.auth_method = "token"
+            self.vault_token = vault_token
+            self.role_id = None
+            self.secret_id = None
+        else:
+            # If auth_method is explicitly set, validate based on that
+            if auth_method == "approle":
+                if not role_id or not secret_id:
+                    raise ValueError("VaultKeyProvider with AppRole auth requires role_id and secret_id")
+                self.auth_method = "approle"
+                self.role_id = role_id
+                self.secret_id = secret_id
+                self.vault_token = None
+            else:  # token
+                if not vault_token:
+                    raise ValueError("VaultKeyProvider with token auth requires vault_token")
+                self.auth_method = "token"
+                self.vault_token = vault_token
+                self.role_id = None
+                self.secret_id = None
+
+        # Cache with TTL support
+        self._cache: dict[str, tuple[bytes, float]] = {}  # kid -> (key, expires_at)
+
+        # AppRole token cache
+        self._current_token: Optional[str] = None
+        self._token_expires: float = 0
 
         # Check for insecure TLS setting
         self._verify_tls = os.environ.get("PANDA_VAULT_INSECURE") != "1"
+
+        # Validate configuration
+        if self.auth_method == "token" and not self.vault_token:
+            raise ValueError("VaultKeyProvider with token auth requires vault_token")
+        if self.auth_method == "approle" and (not self.role_id or not self.secret_id):
+            raise ValueError("VaultKeyProvider with AppRole auth requires role_id and secret_id")
+
+    def _ensure_token(self) -> str:
+        """
+        Ensure we have a valid Vault token.
+
+        For AppRole: fetches/renews token before expiry
+        For Token: uses provided token
+
+        Returns:
+            Valid Vault token
+
+        Raises:
+            CryptoProviderError: If token retrieval fails
+        """
+        # If using token-based auth, use the provided token
+        if self.auth_method == "token":
+            return self.vault_token
+
+        # If using AppRole, check if we need to fetch/renew token
+        now = time.time()
+        if self._current_token and now < self._token_expires:
+            return self._current_token
+
+        # Fetch new AppRole token
+        return self._fetch_approle_token()
+
+    def _fetch_approle_token(self) -> str:
+        """
+        Fetch a new Vault token using AppRole authentication.
+
+        Returns:
+            New Vault token
+
+        Raises:
+            CryptoProviderError: If authentication fails
+        """
+        auth_url = f"{self.vault_url}/v1/auth/approle/login"
+        payload = {
+            "role_id": self.role_id,
+            "secret_id": self.secret_id
+        }
+
+        try:
+            parsed = urllib.parse.urlparse(auth_url)
+            conn_class = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+            conn = conn_class(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80), timeout=self.timeout)
+
+            headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+            conn.request("POST", parsed.path, body=json.dumps(payload), headers=headers)
+
+            response = conn.getresponse()
+            body = response.read().decode("utf-8")
+            conn.close()
+
+            if response.status != 200:
+                raise CryptoProviderError(
+                    f"AppRole authentication failed (HTTP {response.status}): {body}"
+                )
+
+            data = json.loads(body)
+            self._current_token = data.get("auth", {}).get("client_token")
+
+            if not self._current_token:
+                raise CryptoProviderError("No client_token in AppRole response")
+
+            # Set token expiry (use lease_duration if provided, otherwise default to token_ttl)
+            lease_duration = data.get("auth", {}).get("lease_duration", self.token_ttl)
+            # Refresh 5 minutes (300 seconds) before expiry
+            self._token_expires = time.time() + (lease_duration - 300)
+
+            return self._current_token
+
+        except CryptoProviderError:
+            raise
+        except (http.client.HTTPException, json.JSONDecodeError) as e:
+            raise CryptoProviderError(f"AppRole authentication error: {e}")
+        except (OSError, IOError) as e:
+            raise CryptoProviderError(f"AppRole connection error: {e}")
 
     def get_key(self, kid: str) -> bytes:
         """
@@ -168,12 +309,22 @@ class VaultKeyProvider(KeyProvider):
             KeyNotFoundError: If the key cannot be found
             CryptoProviderError: If the Vault request fails
         """
-        # Check cache first
+        now = time.time()
+
+        # Check cache first (with TTL)
         if kid in self._cache:
-            return self._cache[kid]
+            key_bytes, expires = self._cache[kid]
+            if now < expires:
+                return key_bytes
+
+        # Ensure we have a valid token
+        token = self._ensure_token()
 
         # Build Vault KV v2 API URL
-        url = f"{self.vault_url}/v1/{self.mount_path}/data/{kid}"
+        if self.namespace:
+            url = f"{self.vault_url}/v1/{self.namespace}/{self.mount_path}/data/{kid}"
+        else:
+            url = f"{self.vault_url}/v1/{self.mount_path}/data/{kid}"
 
         try:
             # Parse URL for http/https
@@ -187,7 +338,7 @@ class VaultKeyProvider(KeyProvider):
 
             # Send request
             headers = {
-                "X-Vault-Token": self.vault_token,
+                "X-Vault-Token": token,
                 "Accept": "application/json"
             }
             conn.request("GET", parsed.path, headers=headers)
@@ -197,10 +348,13 @@ class VaultKeyProvider(KeyProvider):
             body = response.read().decode("utf-8")
             conn.close()
 
+            if response.status == 404:
+                raise KeyNotFoundError(f"Key '{kid}' not found in Vault")
+
             if response.status != 200:
                 raise KeyNotFoundError(
                     f"Could not retrieve key '{kid}' from Vault "
-                    f"(HTTP status code: {response.status})"
+                    f"(HTTP status code: {response.status}): {body}"
                 )
 
             # Parse response
@@ -228,8 +382,8 @@ class VaultKeyProvider(KeyProvider):
                     f"Key '{kid}' retrieved from Vault is not a valid 32-byte base64 string."
                 )
 
-            # Cache the key
-            self._cache[kid] = key_bytes
+            # Cache the key with TTL
+            self._cache[kid] = (key_bytes, now + self.cache_ttl)
             return key_bytes
 
         except KeyNotFoundError:
@@ -448,14 +602,40 @@ def create_key_provider(
         return LocalKeyProvider(config.get("initialKeys"))
 
     elif driver == "vault":
-        if not config.get("vaultUrl") or not config.get("vaultToken"):
-            raise ValueError("VaultKeyProvider requires vaultUrl and vaultToken")
-        return VaultKeyProvider(
-            vault_url=config["vaultUrl"],
-            vault_token=config["vaultToken"],
-            mount_path=config.get("mountPath", "secret"),
-            timeout=config.get("timeout", 5)
-        )
+        if not config.get("vaultUrl"):
+            raise ValueError("VaultKeyProvider requires vaultUrl")
+
+        # Support both old constructor (vaultUrl, vaultToken, mountPath)
+        # and new config-based approach (with AppRole support)
+        vault_token = config.get("vaultToken")
+        role_id = config.get("roleId")
+        secret_id = config.get("secretId")
+
+        # Determine auth method
+        if vault_token and not (role_id and secret_id):
+            # Old-style token-based auth
+            return VaultKeyProvider(
+                vault_url=config["vaultUrl"],
+                vault_token=vault_token,
+                mount_path=config.get("mountPath", "secret"),
+                timeout=config.get("timeout", 5),
+                namespace=config.get("namespace", ""),
+                auth_method="token"
+            )
+        else:
+            # New-style config (supports AppRole)
+            return VaultKeyProvider(
+                vault_url=config["vaultUrl"],
+                vault_token=config.get("vaultToken"),
+                mount_path=config.get("mountPath", "secret"),
+                timeout=config.get("timeout", 5),
+                role_id=role_id,
+                secret_id=secret_id,
+                auth_method=config.get("authMethod", "token" if vault_token else "approle"),
+                token_ttl=config.get("tokenTTL", 3600),
+                cache_ttl=config.get("cacheTTL", 300),
+                namespace=config.get("namespace", "")
+            )
 
     elif driver == "infisical":
         required = ["siteUrl", "clientId", "clientSecret", "projectId", "environment"]

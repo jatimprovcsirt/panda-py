@@ -33,7 +33,11 @@ class PandaCredentials:
     default_kid: Optional[str] = None
     vault_url: Optional[str] = None
     vault_token: Optional[str] = None
+    vault_role_id: Optional[str] = None
+    vault_secret_id: Optional[str] = None
+    vault_auth_method: Optional[str] = None  # "approle" or "token"
     vault_mount: Optional[str] = None
+    vault_token_ttl: Optional[int] = None  # Token TTL in seconds (default: 3600)
     infisical_site_url: Optional[str] = None
     infisical_client_id: Optional[str] = None
     infisical_client_secret: Optional[str] = None
@@ -145,8 +149,35 @@ def init(token: Optional[str], reinit: bool):
     if provider_choice == 2:
         # Vault configuration
         credentials.provider = "vault"
+        click.echo("\nConfiguring HashiCorp Vault...")
         credentials.vault_url = click.prompt("Vault URL", default="http://localhost:8200")
-        credentials.vault_token = click.prompt("Vault Token", hide_input=True)
+
+        # Authentication method selection
+        click.echo("\nSelect Vault authentication method:")
+        click.echo("  1. AppRole (Recommended - Auto-renewal, production-ready)")
+        click.echo("  2. Token (Advanced - Manual renewal)")
+
+        auth_choice = click.prompt("Choose method", type=int, default=1)
+
+        if auth_choice == 1:
+            # AppRole authentication
+            credentials.vault_auth_method = "approle"
+            click.echo("\nUsing AppRole authentication (auto-renewal enabled)")
+            credentials.vault_role_id = click.prompt("Role ID")
+            credentials.vault_secret_id = click.prompt("Secret ID", hide_input=True)
+
+            # Optional: Token TTL
+            click.echo("\nToken TTL (Optional)")
+            click.echo("  Token lifetime before auto-renewal. Default: 3600s (1 hour)")
+            click.echo("  Press Enter to use default, or enter custom value (300-86400 seconds)")
+            token_ttl_input = click.prompt("Token TTL in seconds", default="3600", show_default=False)
+            credentials.vault_token_ttl = int(token_ttl_input) if token_ttl_input else 3600
+        else:
+            # Token authentication
+            credentials.vault_auth_method = "token"
+            click.echo("\nUsing Token authentication (manual renewal required)")
+            credentials.vault_token = click.prompt("Vault Token", hide_input=True)
+
         credentials.vault_mount = click.prompt("Mount path", default="secret")
 
     elif provider_choice == 3:
@@ -355,6 +386,13 @@ def status():
 
     if credentials.provider == "vault" and credentials.vault_url:
         click.echo(f"Vault URL: {credentials.vault_url}")
+        click.echo(f"Auth Method: {credentials.vault_auth_method or 'token'}")
+        if credentials.vault_auth_method == "approle":
+            click.echo(f"Role ID: ***configured***")
+        else:
+            click.echo(f"Token: ***configured***")
+        if credentials.vault_token_ttl:
+            click.echo(f"Token TTL: {credentials.vault_token_ttl} seconds")
         click.echo(f"Mount Path: {credentials.vault_mount or 'secret'}")
 
     elif credentials.provider == "infisical":
@@ -397,6 +435,13 @@ def config():
     if credentials.provider == "vault":
         click.echo(f"\nVault:")
         click.echo(f"  URL: {credentials.vault_url}")
+        click.echo(f"  Auth: {credentials.vault_auth_method or 'token'}")
+        if credentials.vault_auth_method == "approle":
+            click.echo(f"  Role ID: ***configured***")
+        else:
+            click.echo(f"  Token: ***configured***")
+        if credentials.vault_token_ttl:
+            click.echo(f"  Token TTL: {credentials.vault_token_ttl} seconds")
         click.echo(f"  Mount: {credentials.vault_mount or 'secret'}")
 
     elif credentials.provider == "infisical":

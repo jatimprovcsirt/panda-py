@@ -14,6 +14,7 @@ from panda.crypto import (
     UnsupportedAlgorithmError
 )
 from panda.masking import MaskingConfig
+from panda.audit import NullAuditLogger
 
 
 class TestFieldCipher:
@@ -22,7 +23,7 @@ class TestFieldCipher:
     @pytest.fixture
     def key(self):
         """Fixture for test key - exactly 32 bytes."""
-        return b"this is a 32-byte key for testing!!"
+        return b"12345678901234567890123456789012"
 
     @pytest.fixture
     def key_provider(self, key):
@@ -34,7 +35,7 @@ class TestFieldCipher:
     @pytest.fixture
     def cipher(self, key_provider):
         """Fixture for field cipher."""
-        return FieldCipher(key_provider)
+        return FieldCipher(key_provider, audit=NullAuditLogger())
 
     def test_encrypt_decrypt_basic(self, cipher):
         """Test basic encrypt/decrypt cycle."""
@@ -53,7 +54,7 @@ class TestFieldCipher:
 
         # Decrypt (masked)
         masked = cipher.decrypt(envelope)
-        assert masked == "He************d!"
+        assert masked == "He*********d!"
 
         # Decrypt raw
         raw = cipher.decrypt_raw(envelope)
@@ -123,8 +124,15 @@ class TestFieldCipher:
         # Encrypt
         envelope = cipher.encrypt(plaintext, kid)
 
-        # Tamper with ciphertext
-        tampered_ct = envelope.ciphertext + "tamper"
+        # Tamper with ciphertext by modifying the base64 string
+        # Change a character to corrupt the ciphertext
+        ct_bytes = list(envelope.ciphertext)
+        if ct_bytes[-1] == 'A':
+            ct_bytes[-1] = 'B'
+        else:
+            ct_bytes[-1] = 'A'
+        tampered_ct = "".join(ct_bytes)
+
         tampered_env = Envelope(
             v=envelope.v,
             alg=envelope.alg,

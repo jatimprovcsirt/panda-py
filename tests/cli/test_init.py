@@ -115,7 +115,7 @@ class TestInitCommand:
             assert ".env" in result.output
 
     def test_init_vault_provider_selection(self, runner, temp_dir):
-        """Test selecting Vault provider."""
+        """Test selecting Vault provider with AppRole (default)."""
         valid_token = "panda_demo_" + "a" * 48
         with patch("pathlib.Path.cwd", return_value=temp_dir):
             result = runner.invoke(
@@ -124,7 +124,10 @@ class TestInitCommand:
                 input=(
                     "2\n"  # Select Vault (option 2)
                     "http://localhost:8200\n"  # Vault URL
-                    "test-token\n"  # Vault token
+                    "\n"  # Default auth method (AppRole)
+                    "test-role-id\n"  # Role ID
+                    "test-secret-id\n"  # Secret ID
+                    "\n"  # Default Token TTL
                     "secret\n"  # Mount path
                     "test-key\n"  # Default key ID
                 )
@@ -370,7 +373,7 @@ class TestInitVaultSpecific:
         shutil.rmtree(temp_path)
 
     def test_vault_credentials_stored(self, runner, temp_dir):
-        """Test Vault credentials are stored correctly."""
+        """Test Vault credentials are stored correctly with AppRole (default)."""
         valid_token = "panda_demo_" + "a" * 48
         with patch("pathlib.Path.cwd", return_value=temp_dir):
             result = runner.invoke(
@@ -379,7 +382,10 @@ class TestInitVaultSpecific:
                 input=(
                     "2\n"  # Select Vault
                     "http://vault.example.com:8200\n"
-                    "s.1234567890abcdef\n"
+                    "1\n"  # Select AppRole (default)
+                    "role-id-123\n"
+                    "secret-id-456\n"
+                    "\n"  # Default Token TTL
                     "kv\n"
                     "vault-key\n"
                 )
@@ -390,12 +396,14 @@ class TestInitVaultSpecific:
             data = json.loads(content)
             assert data["provider"] == "vault"
             assert data["vault_url"] == "http://vault.example.com:8200"
-            assert data["vault_token"] == "s.1234567890abcdef"
+            assert data["vault_auth_method"] == "approle"
+            assert data["vault_role_id"] == "role-id-123"
+            assert data["vault_secret_id"] == "secret-id-456"
             assert data["vault_mount"] == "kv"
             assert data["default_kid"] == "vault-key"
 
     def test_vault_default_mount_path(self, runner, temp_dir):
-        """Test Vault init uses default mount path."""
+        """Test Vault init uses default mount path with AppRole."""
         valid_token = "panda_demo_" + "a" * 48
         with patch("pathlib.Path.cwd", return_value=temp_dir):
             result = runner.invoke(
@@ -404,7 +412,10 @@ class TestInitVaultSpecific:
                 input=(
                     "2\n"  # Select Vault
                     "http://localhost:8200\n"
-                    "token\n"
+                    "\n"  # Default auth method (AppRole)
+                    "role-123\n"
+                    "secret-456\n"
+                    "\n"  # Default Token TTL
                     "\n"  # Default mount path (secret)
                     "key-id\n"
                 )
