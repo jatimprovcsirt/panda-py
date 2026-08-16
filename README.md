@@ -16,7 +16,7 @@ PANDA (Private And Secure Data Access) is a cross-language SDK for field-level e
 ## Installation
 
 ```bash
-pip install panda-py
+pip install panda-crypto-py
 ```
 
 ## Quick Start
@@ -180,12 +180,73 @@ def encrypt_endpoint(data: str):
 
 ## CLI Commands
 
+### Mode Non-Interaktif (Flags untuk CI/CD)
+
+Semua perintah CLI dapat digunakan dalam mode non-interaktif dengan menggunakan flag. Ini sangat berguna untuk:
+
+- **CI/CD pipelines** - Otomatisasi tanpa interaksi pengguna
+- **Docker containers** - Inisialisasi otomatis saat container start
+- **Infrastructure as Code** - Integrasi dengan Terraform, Ansible, dll
+- **Automated testing** - Setup dan teardown otomatis
+
+#### Perintah Init - Mode Non-Interaktif
+
+```bash
+# Quick init dengan Local provider (mode tercepat)
+panda init --token <token> --kid default-key
+
+# Init tanpa generate kunci pertama (untuk automation lanjutan)
+panda init --token <token> --reinit
+
+# Init dengan environment variable
+export PANDA_ACCESS_TOKEN=<token>
+panda init
+```
+
+**Flag `init` yang tersedia:**
+
+| Flag | Default | Deskripsi |
+|------|---------|-----------|
+| `--token <value>` | - | PANDA access token (atau set `PANDA_ACCESS_TOKEN` env) |
+| `--reinit` | `false` | Force re-initialization meskipun sudah ada konfigurasi |
+
+#### Perintah Generate - Mode Non-Interaktif
+
+```bash
+# Generate kunci dengan KID langsung (non-interactive)
+panda generate my-new-key
+
+# Generate dengan description
+panda generate nik-key --description "Key for NIK encryption"
+```
+
+**Flag `generate` yang tersedia:**
+
+| Flag | Default | Deskripsi |
+|------|---------|-----------|
+| `--description <text>` | - | Deskripsi untuk kunci |
+
+#### Perintah Deinit - Mode Non-Interaktif
+
+```bash
+# Hapus konfigurasi tanpa prompt
+panda deinit --force
+```
+
+**Flag `deinit` yang tersedia:**
+
+| Flag | Default | Deskripsi |
+|------|---------|-----------|
+| `--force` | `false` | Skip konfirmasi prompt |
+
+#### Tabel Lengkap Perintah CLI
+
 ```bash
 # Initialize PANDA
 panda init --token <your-token>
 
 # Generate a new key
-panda generate --kid my-key
+panda generate my-key
 
 # Check status
 panda status
@@ -194,17 +255,16 @@ panda status
 panda config
 
 # Remove PANDA from project
-panda deinit
-
-# Migrate existing plaintext data
-panda migrate table_name column_name
-
-# Rotate encryption key
-panda rotate-key --old-kid old-key --new-kid new-key
-
-# Permanently shred a key
-panda shred my-key
+panda deinit --force
 ```
+
+| Perintah | Memerlukan Token | Mode Non-Interaktif | Deskripsi |
+|---|---|---:|---|
+| `panda init --token <token>` | ✅ Ya | ✅ (default) | Inisialisasi PANDA |
+| `panda generate <kid>` | ❌ Tidak | ✅ (default non-interactive) | Generate kunci tambahan |
+| `panda status` | ❌ Tidak | ✅ (default non-interactive) | Tampilkan status konfigurasi |
+| `panda config` | ❌ Tidak | ✅ (default non-interactive) | Tampilkan detail konfigurasi lengkap |
+| `panda deinit` | ❌ Tidak | ✅ `--force` | Hapus konfigurasi PANDA |
 
 ## Envelope Format
 
@@ -234,5 +294,5 @@ MIT License - See LICENSE file for details.
 ## Support
 
 For issues and questions:
-- GitHub Issues: https://github.com/jatimprovcsirt/panda-py/issues
+- GitHub Issues: https://github.com/jatimprovcsirt/panda-crypto-py/issues
 - Documentation: https://panda.jatimprovcsirt.go.id
