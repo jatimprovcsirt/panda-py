@@ -21,7 +21,16 @@ import click
 # three.
 from .. import __version__
 
-from ..crypto import LocalKeyProvider, VaultKeyProvider, InfisicalKeyProvider
+from ..crypto import (
+    LocalKeyProvider,
+    VaultKeyProvider,
+    InfisicalKeyProvider,
+    InvalidTokenError,
+    validate_token,
+    validate_token_format,
+    is_demo_token,
+    is_local_environment,
+)
 
 
 # Panda directory structure
@@ -113,26 +122,6 @@ def write_credentials(credentials: PandaCredentials) -> None:
         pass
 
 
-# The token format, as pinned in panda-spec/token-format.md.
-#
-# This pattern used to accept 48 hex characters only. panda-node and panda-php
-# accepted 48 or 64, and panda-go accepted 48 or 64, so a 64-character token
-# that every other SDK considered valid was rejected here — the one
-# implementation that would have said no was the one being used.
-TOKEN_PATTERN = r"^panda_(demo|live)_([a-f0-9]{48}|[a-f0-9]{64})$"
-
-
-def validate_token_format(token: str) -> bool:
-    """Validate PANDA access token format.
-
-    Hex is lowercase. A token is compared byte-for-byte against what the portal
-    issued, so accepting uppercase would mean two spellings of one token both
-    pass a local check and only one of them works.
-    """
-    import re
-    return bool(re.match(TOKEN_PATTERN, token))
-
-
 @click.group()
 @click.version_option(version=__version__)
 def cli():
@@ -156,16 +145,39 @@ def init(token: Optional[str], reinit: bool):
 
     # Get token
     if not token:
-        token = click.prompt("Enter your PANDA access token", hide_input=True)
+        token = click.prompt(
+            "Enter your PANDA access token (or press Enter to skip)",
+            hide_input=True,
+            default="",
+            show_default=False,
+        )
 
-    # Validate token format
-    if not validate_token_format(token):
-        click.echo("⚠️  Token format appears invalid.")
-        click.echo("Expected: panda_demo_xxx or panda_live_xxx (48 or 64 lowercase hex characters)")
-        if not click.confirm("Continue anyway?"):
-            return
-    else:
-        click.echo("✓ Token format validated")
+    # Validate: format first, then the portal.
+    #
+    # This SDK used to stop after the format check. The other three POST the
+    # token to the portal and fail closed if it cannot be reached, so a token
+    # that had been revoked, one already activated by another application, and
+    # one that was never issued all initialised successfully here. It was a
+    # gate in appearance only — and the format check is the weaker half, since
+    # a well-formed token is exactly what an unauthorised caller would have.
+    #
+    # The shape follows panda-php: a failure is reported and the user is asked
+    # whether to continue, defaulting to no. Skipping remains possible — with
+    # the demo token, or with PANDA_SKIP_ONLINE_VALIDATION=1 for tests — but it
+    # is now a decision the user makes rather than one nobody was asked.
+    if token:
+        try:
+            validate_token(token)
+            click.echo("✓ Token format validated")
+        except InvalidTokenError as exc:
+            click.echo(f"⚠️  Token validation failed: {exc}")
+            if not click.confirm("Continue anyway?", default=False):
+                click.echo("Initialization cancelled.")
+                return
+
+        if is_demo_token(token) and not is_local_environment():
+            click.echo("⚠️  WARNING: You are using the static DEMO TOKEN outside a local development environment.")
+            click.echo("Please register your application at the PANDA portal to obtain a per-application live token.")
 
     # Select key provider
     click.echo("\nSelect key provider:")

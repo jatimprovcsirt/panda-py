@@ -105,29 +105,78 @@ history is more useful than a tidy tag list.
 apart in the first place. A test that reads both and compares them would be
 worth adding.
 
-## Unreleased — the token pattern, and a gap behind it
+## Unreleased — the portal gate, which this SDK did not have
 
 No new tag yet. The next release is `0.2.3`.
+
+Three things, in the order they were found. Each one was found by the one
+before it.
+
+### The pattern
 
 `validate_token_format()` accepted 48 hex characters only. `panda-node`,
 `panda-php` and `panda-go` accepted 48 or 64, so a 64-character token that
 every other SDK considered valid was rejected here — the one implementation
-that would have said no being the one in use. The pattern is now
-`^panda_(demo|live)_([a-f0-9]{48}|[a-f0-9]{64})$`, pinned in
-`panda-spec/token-format.md` alongside 22 vectors that `verify_interop.js` runs
+that would have said no being the one in use. The pattern is now pinned in
+`panda-spec/token-format.md`, with vectors that `verify_interop.js` runs
 against all four SDKs.
 
-While writing that document's status table, something larger surfaced that the
-pattern work did not touch:
+### The portal, which was never called
 
-**This SDK performs no portal validation.** The other three POST the token to
-`https://csirt.jatimprov.go.id/panda/api/v1/tokens/validate` before generating
-a key, and fail closed if the portal cannot be reached. `panda-py` checks the
-shape of the string and proceeds. A revoked token, one already activated by
-another application, and one that was never issued all initialise
-successfully.
+Writing that document's status table meant writing down, by hand, which
+implementations actually consult the portal. That is how this surfaced:
 
-That is recorded as a known deviation in `token-format.md` and is **not fixed
-in this change** — it is a behavioural change with its own test story, and it
-should not arrive quietly inside a pattern correction. It is written down here
-so it is a decision rather than an oversight.
+**This SDK performed no portal validation at all.** The other three POST the
+token to the portal before generating a key and fail closed if it cannot be
+reached. `panda-py` checked the shape of the string and proceeded, so a
+revoked token, one already activated by another application, and one that was
+never issued all initialised successfully. The format check is the weaker half
+of the gate and the only half that was running — a well-formed token is
+precisely what an unauthorised caller would have.
+
+It now validates against the portal, in both the interactive and the
+non-interactive path, and fails closed: a timeout, a refused connection, a 5xx,
+or a body that will not parse all stop `init` and generate nothing. The demo
+token still skips the portal — no request is made — and
+`PANDA_SKIP_ONLINE_VALIDATION=1` still disables it for tests.
+
+The token logic moved out of `panda/cli/commands.py` into
+`panda/crypto/token.py`, where `panda-go` and `panda-php` keep theirs. It was
+in the CLI as a second copy of the pattern, which is the copy that had drifted.
+
+### `{"valid": "false"}` was read as approval
+
+Found while writing the tests for the above, and worse than either.
+
+The check was `if not result["valid"]`. A non-empty string is truthy in Python
+— and in JavaScript and PHP — so a portal response *explicitly saying the
+token is not valid* was read as consent and a key was generated. So were
+`{"valid": "no"}` and `{"valid": 1}`. Only the literal boolean `true` counts
+now, and every other value is a refusal.
+
+`panda-go` had always refused these, because decoding a JSON string into a Go
+`bool` fails. It was the only one of the four that was right, and the
+disagreement is what made the bug visible.
+
+### One more, from PHP rather than here
+
+`panda-php`'s portal call referenced `CURLOPT_CONNECT_TIMEOUT`, a constant that
+does not exist — the real name is `CURLOPT_CONNECTTIMEOUT`, with no underscore
+between CONNECT and TIMEOUT. On PHP 8 an undefined constant is a fatal error,
+so that SDK's portal call had never once run. Recorded here because it is the
+same defect class as the two above: a code path that was never executed, so
+nothing could notice it was broken.
+
+### Tests
+
+`tests/security/test_token_portal_validation.py`, 33 tests, all mocking
+`urlopen` — the suite must not depend on whether a live government portal is
+reachable, and a test that reached it would be asserting against production.
+`tests/conftest.py` disables online validation for every other test, so no
+existing test can accidentally make a request.
+
+The CLI wiring is covered separately and for real: a subprocess, a local HTTP
+server, 15 assertions. `init` genuinely calls the portal, and a refusal
+genuinely produces no `.panda` directory and no key. Unit tests prove a
+function behaves; they do not prove anything calls it, which is the defect
+being fixed.

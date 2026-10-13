@@ -24,10 +24,30 @@ from .errors import (
     EncryptionError,
     CryptoProviderError
 )
+from .token import (
+    TOKEN_PATTERN,
+    DEMO_TOKEN,
+    DEFAULT_VALIDATION_URL,
+    LOCAL_ENVIRONMENTS,
+    validate_token,
+    validate_token_format,
+    is_demo_token,
+    is_local_environment,
+)
 
 __all__ = [
     # Main cipher
     "FieldCipher",
+
+    # Access token gate
+    "TOKEN_PATTERN",
+    "DEMO_TOKEN",
+    "DEFAULT_VALIDATION_URL",
+    "LOCAL_ENVIRONMENTS",
+    "validate_token",
+    "validate_token_format",
+    "is_demo_token",
+    "is_local_environment",
 
     # Envelope
     "Envelope",

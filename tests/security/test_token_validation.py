@@ -9,7 +9,11 @@ SDKs are checked against.
 """
 
 import pytest
-from panda.cli.commands import validate_token_format
+
+# From the module that defines it, not from panda.cli.commands, which only
+# re-exports it. `panda.cli.commands` was where the pattern lived — as a second
+# copy, which accepted 48 hex characters where this one accepts 48 or 64.
+from panda.crypto.token import TOKEN_PATTERN, validate_token_format
 
 
 class TestTokenValidation:
@@ -75,6 +79,29 @@ class TestTokenValidation:
     def test_invalid_token_empty_string(self):
         """Test empty string is rejected."""
         assert validate_token_format("") is False
+
+    def test_trailing_newline_is_rejected(self):
+        """A token with a trailing newline is not a token.
+
+        This is the one case where the four SDKs' regex engines disagreed on
+        the same pattern. In Python and in PCRE, `$` also matches immediately
+        before a newline at the end of the string, so this string matched here
+        and in PHP while Node and Go rejected it. A token read from a file or
+        pasted out of a heredoc carries a trailing newline routinely, so it was
+        not hypothetical: the same bytes were a valid token in two SDKs and not
+        in the other two. `\\Z`, and PCRE's `D` modifier, anchor at the end of
+        the string and nothing else.
+        """
+        token = "panda_demo_" + "a" * 48
+        assert validate_token_format(token) is True
+        assert validate_token_format(token + "\n") is False
+        assert validate_token_format(token + "\r") is False
+        assert validate_token_format(token + "\r\n") is False
+        assert validate_token_format("\n" + token) is False
+
+    def test_the_pattern_is_the_one_the_spec_pins(self):
+        """The constant exists so there is one definition, not four."""
+        assert TOKEN_PATTERN.startswith("^panda_(demo|live)_")
 
     def test_invalid_token_none(self):
         """Test None is rejected."""
