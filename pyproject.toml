@@ -59,7 +59,7 @@ all = [
 
 [project.urls]
 Homepage = "https://github.com/jatimprovcsirt/panda-crypto-py"
-Documentation = "https://panda.jatimprovcsirt.go.id"
+Documentation = "https://csirt.jatimprov.go.id/panda/docs"
 Repository = "https://github.com/jatimprovcsirt/panda-crypto-py"
 Issues = "https://github.com/jatimprovcsirt/panda-crypto-py/issues"
 

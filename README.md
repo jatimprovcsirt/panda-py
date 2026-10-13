@@ -301,4 +301,4 @@ embed in their own systems.
 
 For issues and questions:
 - GitHub Issues: https://github.com/jatimprovcsirt/panda-crypto-py/issues
-- Documentation: https://panda.jatimprovcsirt.go.id
+- Documentation: https://csirt.jatimprov.go.id/panda/docs
