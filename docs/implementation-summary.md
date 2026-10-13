@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Python SDK (`panda-py`) has been created with feature parity to the existing PHP, Node.js, and Go implementations. All core functionality for field-level encryption and masking of sensitive personal data has been implemented.
+The Python SDK (`panda-crypto-py`) has been created with feature parity to the existing PHP, Node.js, and Go implementations. All core functionality for field-level encryption and masking of sensitive personal data has been implemented.
 
 ## Directory Structure
 
@@ -160,15 +160,15 @@ Click-based CLI with commands:
 
 ```bash
 # Base package
-pip install panda-py
+pip install panda-crypto-py
 
 # With framework support
-pip install panda-py[django]
-pip install panda-py[flask]
-pip install panda-py[fastapi]
+pip install panda-crypto-py[django]
+pip install panda-crypto-py[flask]
+pip install panda-crypto-py[fastapi]
 
 # Development
-pip install panda-py[dev]
+pip install panda-crypto-py[dev]
 ```
 
 ## Usage Example
