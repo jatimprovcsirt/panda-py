@@ -28,12 +28,14 @@ not a date, not the branch.
 
 ## Released
 
-`pyproject.toml` declares `0.2.0`, and `v0.2.0` is the most recent tag. Those
-two agree, which is the rule this file exists to enforce.
+`pyproject.toml` and `src/panda/__init__.py` both declare `0.2.1`, and `v0.2.1`
+is the most recent tag. All three agree, which is the rule this file exists to
+enforce.
 
 | Version | Date | What it was |
 |---|---|---|
-| `v0.2.0` | 2026-08-16 | CLI non-interactive mode documentation. |
+| `v0.2.1` | 2026-10-13 | First release since `0.1.0` to reach PyPI. `panda.__version__` no longer reports a number that matches nothing. |
+| `v0.2.0` | 2026-08-16 | CLI non-interactive mode documentation. **Tagged but never uploaded** — superseded by `0.2.1`. |
 | `v0.1.6` | 2026-08-14 | README corrected PANDA CLI workflow. |
 | `v0.4.2` | 2026-08-14 | README corrected PANDA CLI workflow. |
 | `v0.1.5` | 2026-08-14 | Author name correction. |
@@ -46,27 +48,31 @@ newer than both. The numbers do not tell you the order; the dates do.
 
 `v0.2.0` is the version to build on.
 
-## Unresolved: PyPI serves releases this repository does not know about
+## What 0.2.1 settled
 
-PyPI's release history is:
+The package is published as **`panda-crypto-py`** — not `panda`, which is
+somebody else's package on PyPI and has nothing to do with PANDA. Worth writing
+down, because a changelog is a bad place to get that wrong.
 
-```
-0.1, 0.1.1, 0.1.2, 0.1.3, 0.1.4, 0.1.5, 0.3.0-dev, 0.3.1
-```
+Before `0.2.1`, three things disagreed:
 
-**`0.3.0-dev` and `0.3.1` are not tags in this repository, and no commit here
-declares those versions.** They were uploaded from somewhere and the trace was
-not kept. Meanwhile `v0.1.6`, `v0.4.2` and `v0.2.0` — which *are* tagged here —
-were never uploaded.
+| | |
+|---|---|
+| PyPI | `0.1.0` — the only release ever uploaded (2026-08-14) |
+| `pyproject.toml` | `0.2.0` |
+| `src/panda/__init__.py` | `0.1.0` |
+| Most recent tag | `v0.2.0` |
 
-Two consequences worth knowing:
+So `pip install panda-crypto-py` installed code from before the CLI work while
+the repository said `0.2.0`, and anything reading `panda.__version__` at runtime
+reported `0.1.0` — a number matching neither the tag nor the upload. `v0.2.0`
+was tagged and never published.
 
-- `pip install panda` currently installs `0.3.1`, whose relationship to any
-  commit in this repository is unknown. It is not the code that `v0.2.0`
-  points at.
-- Because PyPI never frees a version number, `0.3.1` cannot be withdrawn and
-  reissued. Whatever that upload contains is permanent.
+`0.2.1` is the first version where all of them agree. `v0.2.0` remains as a tag
+that was never released; it is recorded above rather than deleted, because the
+history is more useful than a tidy tag list.
 
-Nobody should tag `0.3.x` or `0.4.x` here without first establishing what was
-uploaded under those numbers, or the repository will end up with two different
-things sharing one version.
+**`__version__` in `src/panda/__init__.py` is still kept in step with
+`pyproject.toml` by hand.** Nothing enforces it, which is how the two drifted
+apart in the first place. A test that reads both and compares them would be
+worth adding.

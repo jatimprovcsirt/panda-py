@@ -4,7 +4,11 @@ PANDA - Private And Secure Data Access SDK for Python
 Field-level encryption and masking for sensitive personal data.
 """
 
-__version__ = "0.1.0"
+# Kept in step with pyproject.toml by hand, because nothing enforces it.
+# It said 0.1.0 while pyproject.toml said 0.2.0, so anything reading
+# panda.__version__ at runtime got a number matching neither the tag nor
+# the published release.
+__version__ = "0.2.1"
 
 from .crypto import (
     FieldCipher,
