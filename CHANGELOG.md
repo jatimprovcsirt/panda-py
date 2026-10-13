@@ -104,3 +104,30 @@ history is more useful than a tidy tag list.
 `pyproject.toml` by hand.** Nothing enforces it, which is how the two drifted
 apart in the first place. A test that reads both and compares them would be
 worth adding.
+
+## Unreleased — the token pattern, and a gap behind it
+
+No new tag yet. The next release is `0.2.3`.
+
+`validate_token_format()` accepted 48 hex characters only. `panda-node`,
+`panda-php` and `panda-go` accepted 48 or 64, so a 64-character token that
+every other SDK considered valid was rejected here — the one implementation
+that would have said no being the one in use. The pattern is now
+`^panda_(demo|live)_([a-f0-9]{48}|[a-f0-9]{64})$`, pinned in
+`panda-spec/token-format.md` alongside 22 vectors that `verify_interop.js` runs
+against all four SDKs.
+
+While writing that document's status table, something larger surfaced that the
+pattern work did not touch:
+
+**This SDK performs no portal validation.** The other three POST the token to
+`https://csirt.jatimprov.go.id/panda/api/v1/tokens/validate` before generating
+a key, and fail closed if the portal cannot be reached. `panda-py` checks the
+shape of the string and proceeds. A revoked token, one already activated by
+another application, and one that was never issued all initialise
+successfully.
+
+That is recorded as a known deviation in `token-format.md` and is **not fixed
+in this change** — it is a behavioural change with its own test story, and it
+should not arrive quietly inside a pattern correction. It is written down here
+so it is a decision rather than an oversight.

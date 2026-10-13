@@ -113,11 +113,24 @@ def write_credentials(credentials: PandaCredentials) -> None:
         pass
 
 
+# The token format, as pinned in panda-spec/token-format.md.
+#
+# This pattern used to accept 48 hex characters only. panda-node and panda-php
+# accepted 48 or 64, and panda-go accepted 48 or 64, so a 64-character token
+# that every other SDK considered valid was rejected here — the one
+# implementation that would have said no was the one being used.
+TOKEN_PATTERN = r"^panda_(demo|live)_([a-f0-9]{48}|[a-f0-9]{64})$"
+
+
 def validate_token_format(token: str) -> bool:
-    """Validate PANDA access token format."""
+    """Validate PANDA access token format.
+
+    Hex is lowercase. A token is compared byte-for-byte against what the portal
+    issued, so accepting uppercase would mean two spellings of one token both
+    pass a local check and only one of them works.
+    """
     import re
-    pattern = r"^panda_(demo|live)_[a-f0-9]{48}$"
-    return bool(re.match(pattern, token))
+    return bool(re.match(TOKEN_PATTERN, token))
 
 
 @click.group()
@@ -148,7 +161,7 @@ def init(token: Optional[str], reinit: bool):
     # Validate token format
     if not validate_token_format(token):
         click.echo("⚠️  Token format appears invalid.")
-        click.echo("Expected: panda_demo_xxx or panda_live_xxx (48 hex characters)")
+        click.echo("Expected: panda_demo_xxx or panda_live_xxx (48 or 64 lowercase hex characters)")
         if not click.confirm("Continue anyway?"):
             return
     else:

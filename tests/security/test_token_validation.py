@@ -2,7 +2,10 @@
 Security tests for token validation.
 
 Tests verify that PANDA tokens are properly validated according
-to the specified format: panda_(demo|live)_[48 hex chars]
+to the specified format: panda_(demo|live)_[48 or 64 lowercase hex chars]
+
+Pinned in panda-spec/token-format.md, which is the one definition the four
+SDKs are checked against.
 """
 
 import pytest
@@ -31,6 +34,21 @@ class TestTokenValidation:
         """Test valid live token."""
         token = "panda_live_" + "f" * 48
         assert validate_token_format(token) is True
+
+    def test_valid_64_char_token(self):
+        """Test a 64-hex-character token is accepted.
+
+        panda-node, panda-php and panda-go have always accepted these; this
+        SDK rejected them until the pattern was aligned.
+        """
+        token = "panda_live_" + "ab12" * 16
+        assert len(token) == 75
+        assert validate_token_format(token) is True
+
+    def test_invalid_63_and_65_char_tokens(self):
+        """Test lengths between and beyond the two allowed ones are rejected."""
+        assert validate_token_format("panda_demo_" + "a" * 63) is False
+        assert validate_token_format("panda_demo_" + "a" * 65) is False
 
     def test_valid_token_numeric_only(self):
         """Test valid token with only numeric hex."""
