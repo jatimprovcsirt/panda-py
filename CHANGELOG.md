@@ -28,12 +28,15 @@ not a date, not the branch.
 
 ## Released
 
-`pyproject.toml` and `src/panda/__init__.py` both declare `0.2.1`, and `v0.2.1`
+`pyproject.toml` and `src/panda/__init__.py` both declare `0.2.3`, and `v0.2.3`
 is the most recent tag. All three agree, which is the rule this file exists to
-enforce.
+enforce. While `0.2.3` was being cut this paragraph still said `0.2.1`, having
+not been updated for `0.2.2` — which is the failure this file exists to catch,
+occurring in this file.
 
 | Version | Date | What it was |
 |---|---|---|
+| `v0.2.3` | 2026-10-13 | The portal gate did not exist here; `{"valid": "false"}` was read as approval. |
 | `v0.2.2` | 2026-10-13 | Two defects found by the test suite, which had been red since before `0.2.1` and was read as test noise. |
 | `v0.2.1` | 2026-10-13 | First release since `0.1.0` to reach PyPI. `panda.__version__` no longer reports a number that matches nothing. |
 | `v0.2.0` | 2026-08-16 | CLI non-interactive mode documentation. **Tagged but never uploaded** — superseded by `0.2.1`. |
@@ -47,7 +50,7 @@ The tags run `v0.1.5`, `v0.4.2`, `v0.1.6`, `v0.2.0` in date order. The version
 was re-based mid-series, so `v0.1.6` is *newer* than `v0.4.2` and `v0.2.0` is
 newer than both. The numbers do not tell you the order; the dates do.
 
-`v0.2.0` is the version to build on.
+`v0.2.3` is the version to build on.
 
 ## What 0.2.2 fixed
 
@@ -105,9 +108,9 @@ history is more useful than a tidy tag list.
 apart in the first place. A test that reads both and compares them would be
 worth adding.
 
-## Unreleased — the portal gate, which this SDK did not have
+## What 0.2.3 fixes
 
-No new tag yet. The next release is `0.2.3`.
+### The portal gate, which this SDK did not have
 
 Three things, in the order they were found. Each one was found by the one
 before it.
