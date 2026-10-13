@@ -6,7 +6,7 @@ If you discover a security vulnerability in PANDA, please report it responsibly.
 
 ### How to Report
 
-Send an email to: **persandian@jatimprov.go.id**
+Send an email to: **csirt@jatimprov.go.id**
 
 Please include:
 - A description of the vulnerability
