@@ -11,9 +11,15 @@ import base64
 import secrets
 from pathlib import Path
 from typing import Optional
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, fields
 
 import click
+
+# Read rather than repeated. This said "0.1.0" while pyproject.toml said
+# 0.2.0, so `panda --version` reported a version that had never been
+# released — a fourth place the number lived, disagreeing with the other
+# three.
+from .. import __version__
 
 from ..crypto import LocalKeyProvider, VaultKeyProvider, InfisicalKeyProvider
 
@@ -73,9 +79,21 @@ def read_credentials() -> Optional[PandaCredentials]:
     try:
         with open(creds_file, "r", encoding="utf-8") as f:
             data = json.load(f)
-        return PandaCredentials(**data)
-    except (json.JSONDecodeError, TypeError):
+    except json.JSONDecodeError:
         return None
+
+    if not isinstance(data, dict):
+        return None
+
+    # Unknown keys are dropped rather than raised on. A file written by a
+    # newer CLI carries fields this version does not know about, and passing
+    # them to the constructor raises TypeError — which the handler here used
+    # to swallow along with genuinely corrupt JSON, returning None. The
+    # effect was that a perfectly readable credentials file looked missing,
+    # so `panda status` reported an uninitialised project and the only clue
+    # was silence.
+    known = {f.name for f in fields(PandaCredentials)}
+    return PandaCredentials(**{k: v for k, v in data.items() if k in known})
 
 
 def write_credentials(credentials: PandaCredentials) -> None:
@@ -103,7 +121,7 @@ def validate_token_format(token: str) -> bool:
 
 
 @click.group()
-@click.version_option(version="0.1.0")
+@click.version_option(version=__version__)
 def cli():
     """PANDA - Private And Secure Data Access SDK."""
     pass

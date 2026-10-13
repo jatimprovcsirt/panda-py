@@ -181,7 +181,7 @@ class TestCredentialFilePermissions:
         """Create temporary directory for testing."""
         temp_path = Path(tempfile.mkdtemp())
         yield temp_path
-        shutil.rmtree(temp_dir)
+        shutil.rmtree(temp_path)
 
     @pytest.mark.skipif(os.name != 'posix', reason="Unix-specific test")
     def test_credentials_file_user_only_permissions(self, temp_dir):
@@ -222,7 +222,7 @@ class TestCredentialIntegrity:
         """Create temporary directory for testing."""
         temp_path = Path(tempfile.mkdtemp())
         yield temp_path
-        shutil.rmtree(temp_dir)
+        shutil.rmtree(temp_path)
 
     def test_corrupted_credentials_returns_none(self, temp_dir):
         """Test reading corrupted credentials returns None."""

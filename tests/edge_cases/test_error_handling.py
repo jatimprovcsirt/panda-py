@@ -7,6 +7,7 @@ across key providers and CLI operations.
 
 import pytest
 import json
+import os
 import tempfile
 import shutil
 from pathlib import Path
@@ -43,7 +44,7 @@ class TestCLIErrorHandling:
         """Create temporary directory for testing."""
         temp_path = Path(tempfile.mkdtemp())
         yield temp_path
-        shutil.rmtree(temp_dir)
+        shutil.rmtree(temp_path)
 
     def test_init_with_corrupted_credentials(self, runner, temp_dir):
         """Test init handles existing corrupted credentials file."""
@@ -156,7 +157,11 @@ class TestKeyProviderErrorHandling:
             vault_url="http://localhost:8200",
             vault_token="test-token"
         )
-        with pytest.raises(KeyNotFoundError):
+        # CryptoProviderError, not KeyNotFoundError. A Vault that cannot be
+        # reached is an outage; reporting it as a missing key sends whoever
+        # is on call to look for a key that is probably fine. The provider
+        # was changed to distinguish the two and this expectation was not.
+        with pytest.raises(CryptoProviderError):
             provider.get_key("test-key")
 
     @patch("http.client.HTTPSConnection")
@@ -204,8 +209,13 @@ class TestKeyProviderErrorHandling:
             create_key_provider("vault", {"vaultToken": "token"})
 
     def test_factory_vault_missing_token(self):
-        """Test create_key_provider validates Vault config."""
-        with pytest.raises(ValueError, match="requires vaultUrl"):
+        """Test create_key_provider validates Vault config.
+
+        With a URL and nothing else, the factory defaults to AppRole and
+        says so. The expectation here used to be "requires vaultUrl", which
+        is not the problem — the URL is the one thing that *was* given.
+        """
+        with pytest.raises(ValueError, match="requires role_id and secret_id"):
             create_key_provider("vault", {"vaultUrl": "http://localhost:8200"})
 
     def test_factory_infisical_missing_fields(self):
@@ -225,7 +235,7 @@ class TestCredentialFileEdgeCases:
         """Create temporary directory for testing."""
         temp_path = Path(tempfile.mkdtemp())
         yield temp_path
-        shutil.rmtree(temp_dir)
+        shutil.rmtree(temp_path)
 
     def test_read_credentials_partial_file(self, temp_dir):
         """Test reading partial credentials file."""
@@ -333,10 +343,21 @@ class TestKeyIDEdgeCases:
 class TestEnvironmentVariableEdgeCases:
     """Test edge cases with environment variable handling."""
 
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="Windows environment variables are case-insensitive, so "
+        "PANDA_KEY_test-key and PANDA_KEY_TEST-KEY are the same variable. "
+        "The exact-match step cannot be isolated from the normalised one "
+        "here, which is what this test exists to distinguish.",
+    )
     def test_env_var_priority(self, monkeypatch):
         """Test priority of env var lookups."""
-        key = "a" * 32
-        b64_key = "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3OQ=="
+        # bytes, because that is what get_key returns and is annotated to
+        # return. Comparing against a str could never hold.
+        key = b"a" * 32
+        # 32 bytes, not 34. The previous value decoded to 34 and the provider
+        # rejected it, so these tests were failing on their own fixture.
+        b64_key = "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE="
 
         # Set both exact and normalized versions
         monkeypatch.setenv("PANDA_KEY_TEST_KEY", b64_key)
@@ -350,8 +371,12 @@ class TestEnvironmentVariableEdgeCases:
 
     def test_env_var_hyphen_normalization(self, monkeypatch):
         """Test hyphen to underscore normalization."""
-        key = "a" * 32
-        b64_key = "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3OQ=="
+        # bytes, because that is what get_key returns and is annotated to
+        # return. Comparing against a str could never hold.
+        key = b"a" * 32
+        # 32 bytes, not 34. The previous value decoded to 34 and the provider
+        # rejected it, so these tests were failing on their own fixture.
+        b64_key = "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE="
 
         # Set with underscore
         monkeypatch.setenv("PANDA_KEY_MY_TEST_KEY", b64_key)
@@ -363,8 +388,12 @@ class TestEnvironmentVariableEdgeCases:
 
     def test_env_var_dot_normalization(self, monkeypatch):
         """Test dot to underscore normalization."""
-        key = "a" * 32
-        b64_key = "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3OQ=="
+        # bytes, because that is what get_key returns and is annotated to
+        # return. Comparing against a str could never hold.
+        key = b"a" * 32
+        # 32 bytes, not 34. The previous value decoded to 34 and the provider
+        # rejected it, so these tests were failing on their own fixture.
+        b64_key = "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE="
 
         # Set with underscore
         monkeypatch.setenv("PANDA_KEY_MY_API_KEY", b64_key)

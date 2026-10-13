@@ -25,7 +25,20 @@ class UnsupportedAlgorithmError(PandaError):
     pass
 
 
-class MalformedEnvelopeError(PandaError):
+class EnvelopeError(PandaError):
+    """Base for every envelope-related error.
+
+    Exists so a caller can catch all of them under one name. It did not
+    before: MalformedEnvelopeError was defined twice — once here and once in
+    envelope.py — as two unrelated classes. The name exported from
+    panda.crypto was this one, while the parser and the cipher raised the
+    other, so `except panda.crypto.MalformedEnvelopeError` caught nothing and
+    the exception escaped as an unhandled error.
+    """
+    pass
+
+
+class MalformedEnvelopeError(EnvelopeError):
     """Raised when the envelope format is invalid or corrupted."""
     pass
 

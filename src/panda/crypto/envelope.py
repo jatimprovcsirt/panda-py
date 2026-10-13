@@ -8,15 +8,13 @@ from typing import Dict, Any
 from dataclasses import dataclass
 import json
 
+# Imported rather than defined here. These were once defined in both this
+# module and errors.py, which meant the class this parser raised was a
+# different class to the one panda.crypto exported — so catching the
+# documented name caught nothing. One definition, in errors.py.
+from .errors import EnvelopeError, MalformedEnvelopeError
 
-class EnvelopeError(Exception):
-    """Base exception for envelope-related errors."""
-    pass
-
-
-class MalformedEnvelopeError(EnvelopeError):
-    """Raised when the envelope format is invalid."""
-    pass
+__all__ = ["Envelope", "EnvelopeError", "MalformedEnvelopeError"]
 
 
 @dataclass(frozen=True)

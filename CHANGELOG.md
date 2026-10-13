@@ -34,6 +34,7 @@ enforce.
 
 | Version | Date | What it was |
 |---|---|---|
+| `v0.2.2` | 2026-10-13 | Two defects found by the test suite, which had been red since before `0.2.1` and was read as test noise. |
 | `v0.2.1` | 2026-10-13 | First release since `0.1.0` to reach PyPI. `panda.__version__` no longer reports a number that matches nothing. |
 | `v0.2.0` | 2026-08-16 | CLI non-interactive mode documentation. **Tagged but never uploaded** — superseded by `0.2.1`. |
 | `v0.1.6` | 2026-08-14 | README corrected PANDA CLI workflow. |
@@ -47,6 +48,33 @@ was re-based mid-series, so `v0.1.6` is *newer* than `v0.4.2` and `v0.2.0` is
 newer than both. The numbers do not tell you the order; the dates do.
 
 `v0.2.0` is the version to build on.
+
+## What 0.2.2 fixed
+
+Both were found by running the test suite, which had been failing since before
+`0.2.1` and was assumed to be test noise. Most of it was — a `shutil.rmtree`
+that named the fixture instead of the variable, base64 keys of the wrong
+length, tokens that were the wrong length, expectations left behind by earlier
+changes. Two were not.
+
+**`MalformedEnvelopeError` existed twice**, as two unrelated classes — one in
+`errors.py`, one in `envelope.py`. The name exported from `panda.crypto` was
+the first; the envelope parser and the cipher raised the second. So
+`except panda.crypto.MalformedEnvelopeError` caught nothing at all, and a
+malformed envelope escaped any handler written to catch it. There is now one
+class, and it is catchable as `MalformedEnvelopeError`, as `EnvelopeError`,
+and as `PandaError`.
+
+**A credentials file with an unknown field looked missing.** `read_credentials`
+passed the parsed JSON straight into `PandaCredentials(**data)`, so any
+unrecognised key raised `TypeError` — which the handler caught alongside
+genuinely corrupt JSON and turned into `None`. A file written by a newer CLI,
+or holding one extra field, made `panda status` report an uninitialised
+project with no explanation. Unknown fields are now dropped, and only
+unparsable JSON returns `None`.
+
+Also: `panda --version` reported `0.1.0` from a literal in `cli/commands.py`
+while everything else said `0.2.0`. The CLI now reads the package version.
 
 ## What 0.2.1 settled
 

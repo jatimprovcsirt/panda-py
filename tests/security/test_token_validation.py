@@ -34,7 +34,9 @@ class TestTokenValidation:
 
     def test_valid_token_numeric_only(self):
         """Test valid token with only numeric hex."""
-        token = "panda_demo_" + "1234567890" * 4 + "123456789012"
+        # 48 hex characters. The previous expression built 52, so the test
+        # asserted that an over-long token was valid.
+        token = "panda_demo_" + "1234567890" * 4 + "12345678"
         assert validate_token_format(token) is True
 
     def test_invalid_token_wrong_prefix_bear(self):
@@ -164,7 +166,10 @@ class TestTokenValidation:
 
     def test_valid_token_exact_length(self):
         """Test token with exactly 48 hex chars."""
-        token = "panda_demo_1234567890abcdef" * 3  # Exactly 48 chars
+        # The prefix concatenated with 48 hex characters. The previous
+        # expression repeated the whole string three times, which produced
+        # three prefixes and 81 characters.
+        token = "panda_demo_" + "1234567890abcdef" * 3
         assert validate_token_format(token) is True
 
     def test_invalid_token_with_colon(self):

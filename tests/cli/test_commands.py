@@ -38,11 +38,19 @@ class TestCLIBasics:
         assert cli.name == "cli"
 
     def test_cli_version_option(self):
-        """Test CLI version option."""
+        """Test CLI version option.
+
+        Compared against the package version rather than a literal. This
+        asserted "0.1.0" while the package had moved on, so it was pinning
+        the wrong number rather than checking that the CLI reports the
+        right one.
+        """
+        import panda
+
         runner = CliRunner()
         result = runner.invoke(cli, ["--version"])
         assert result.exit_code == 0
-        assert "0.1.0" in result.output
+        assert panda.__version__ in result.output
 
     def test_cli_help(self):
         """Test CLI help output."""
