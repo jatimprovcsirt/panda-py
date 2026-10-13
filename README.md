@@ -289,7 +289,13 @@ Encrypted fields use a standardized JSON envelope:
 
 ## License
 
-MIT License - See LICENSE file for details.
+Apache License 2.0 — see `LICENSE` for the full text and `NOTICE` for
+attribution.
+
+Previously MIT. Apache-2.0 is equally permissive and adds an express patent
+grant and a trademark clause, which MIT is silent on — it matters here because
+this is cryptographic software that other agencies and vendors are expected to
+embed in their own systems.
 
 ## Support
 

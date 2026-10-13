@@ -8,7 +8,8 @@ version = "0.2.3"
 description = "Private And Secure Data Access - Field-level encryption SDK for Python"
 readme = "README.md"
 requires-python = ">=3.8"
-license = {text = "MIT"}
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 authors = [
     {name = "Bidang Persandian dan Keamanan Informasi - Dinas Komunikasi dan Informatika Provinsi Jawa Timur", email = "csirt@jatimprov.go.id"}
 ]
@@ -19,7 +20,6 @@ keywords = ["encryption", "security", "gdpr", "pdp", "privacy", "aes-256-gcm"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
