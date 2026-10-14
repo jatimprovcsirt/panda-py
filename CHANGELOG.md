@@ -64,6 +64,7 @@ occurring in this file.
 
 | Version | Date | What it was |
 |---|---|---|
+| `v0.2.4` | 2026-10-14 | `init` gains `--quick` and `--kid`; it had no non-interactive path at all. |
 | `v0.2.3` | 2026-10-13 | The portal gate did not exist here; `{"valid": "false"}` was read as approval. |
 | `v0.2.2` | 2026-10-13 | Two defects found by the test suite, which had been red since before `0.2.1` and was read as test noise. |
 | `v0.2.1` | 2026-10-13 | First release since `0.1.0` to reach PyPI. `panda.__version__` no longer reports a number that matches nothing. |
@@ -135,6 +136,34 @@ history is more useful than a tidy tag list.
 `pyproject.toml` by hand.** Nothing enforces it, which is how the two drifted
 apart in the first place. A test that reads both and compares them would be
 worth adding.
+
+## What 0.2.4 fixes
+
+`panda init` always prompted. There was no way to run it without a person
+answering, so there was no one-liner for a CI pipeline, a Dockerfile or a
+provisioning script — while panda-node, panda-php and panda-go all had
+`--quick`. A documented workflow that works in three SDKs and not the fourth is
+a workflow that is wrong for whoever picked this one; the CLI guide had been
+papering over it by printing a different command for each language.
+
+`--quick --token <token> --kid <key-id>` now runs to completion with no input:
+local provider, one key, credentials written.
+
+The gate is fail-closed **with no override** on this path. The wizard can offer
+"Continue anyway?" because a person is there to answer it. `--quick` cannot
+ask, so a token that fails validation exits 1 and writes nothing, and a missing
+token is an error rather than a prompt. The token may come from
+`PANDA_ACCESS_TOKEN`, so it need not appear in shell history or the process
+list.
+
+The key-writing code is shared between the two paths now (`_write_local_key`)
+rather than written twice. Two implementations of "write the key to .env" that
+differ — one writing `PANDA_DEFAULT_KID` and one not — is how a project ends up
+with a `.env` whose contents depend on which command created it.
+
+Eight tests, each closing stdin. A prompt on this path is a hang rather than a
+failure, and a hang is the wrong outcome in CI. Disabling the quick branch
+fails seven of them.
 
 ## What 0.2.3 fixes
 
