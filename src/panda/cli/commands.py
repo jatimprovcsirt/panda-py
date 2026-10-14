@@ -140,7 +140,7 @@ def cli():
 @click.option(
     "--quick",
     is_flag=True,
-    help="Skip wizard, use quick setup with local provider",
+    help="Skip the wizard; non-interactive setup",
 )
 @click.option("--reinit", is_flag=True, help="Force re-initialization")
 @click.option(
@@ -148,7 +148,20 @@ def cli():
     is_flag=True,
     help="Skip first key generation",
 )
-def init(token: Optional[str], kid: str, quick: bool, reinit: bool, skip_key_gen: bool):
+@click.option(
+    "--provider",
+    type=click.Choice(["local", "vault", "infisical"]),
+    default=None,
+    help="Key provider. Implies non-interactive, as --quick does.",
+)
+def init(
+    token: Optional[str],
+    kid: str,
+    quick: bool,
+    reinit: bool,
+    skip_key_gen: bool,
+    provider: Optional[str],
+):
     """Initialize PANDA in your project."""
     panda_dir = get_panda_dir()
 
@@ -165,8 +178,13 @@ def init(token: Optional[str], kid: str, quick: bool, reinit: bool, skip_key_gen
     # panda-node, panda-php and panda-go all had `--quick`. A documented
     # workflow that works in three SDKs and not the fourth is a workflow that
     # is wrong for whoever picked this one.
-    if quick:
-        _run_quick_init(token, kid, skip_key_gen)
+    # Naming a provider implies the non-interactive path for the same reason
+    # `--quick` does: it is an instruction the wizard cannot accept, since it
+    # would ask the question anyway and then discard the answer. panda-node
+    # has read it this way since it gained the flag, so reading it otherwise
+    # here would introduce a disagreement in the course of removing one.
+    if quick or provider is not None:
+        _run_quick_init(token, kid, skip_key_gen, provider or "local")
         return
 
     # Get token
@@ -312,8 +330,110 @@ def _write_local_key(kid: str) -> str:
     return env_var_name
 
 
-def _run_quick_init(token: Optional[str], kid: str, skip_key_gen: bool = False) -> None:
-    """Non-interactive init: local provider, one key, no prompts.
+# The environment variables each provider is configured from on the
+# non-interactive path. These are the names `VaultKeyProvider`,
+# `InfisicalKeyProvider` and CLAUDE.md's environment reference already use —
+# not a second spelling invented for this path, which would be one more rule
+# with two definitions.
+_VAULT_REQUIRED_VARS = ("PANDA_VAULT_URL",)
+
+_VAULT_APPROLE_VARS = ("PANDA_VAULT_ROLE_ID", "PANDA_VAULT_SECRET_ID")
+
+_INFISICAL_REQUIRED_VARS = (
+    "PANDA_INFISICAL_CLIENT_ID",
+    "PANDA_INFISICAL_CLIENT_SECRET",
+    "PANDA_INFISICAL_PROJECT_ID",
+)
+
+
+def _missing_provider_env(provider: str, names) -> None:
+    joined = " and ".join(names)
+    verb = "These are" if len(names) > 1 else "It is"
+    click.echo(
+        f"Error: --provider {provider} needs {joined} to be set.\n"
+        f"{verb} read from the environment: this path cannot prompt, and "
+        f"defaulting would write a configuration nobody chose."
+    )
+    sys.exit(1)
+
+
+def _apply_provider_env(credentials, provider: str) -> None:
+    """Fill a non-local provider's settings from the environment, or exit.
+
+    Fail-closed, as the token gate on this path is. The wizard may offer
+    http://localhost:8200 as a default because a person is there to see it and
+    disagree; `--quick` cannot ask, and a credentials file naming a Vault that
+    nothing said to use is the kind of wrong configuration that behaves like a
+    working one until the first decrypt.
+    """
+    env = os.environ
+
+    if provider == "vault":
+        absent = [v for v in _VAULT_REQUIRED_VARS if not env.get(v)]
+        if absent:
+            _missing_provider_env("vault", absent)
+        url = env["PANDA_VAULT_URL"]
+
+        method = env.get("PANDA_VAULT_AUTH_METHOD")
+        if not method:
+            # Inferred where it is unambiguous. Demanding the variable when the
+            # caller has already answered the question by setting role and
+            # secret, or a token, is the difference between a quick init that
+            # works and one that argues.
+            if all(env.get(v) for v in _VAULT_APPROLE_VARS):
+                method = "approle"
+            elif env.get("PANDA_VAULT_TOKEN"):
+                method = "token"
+            else:
+                _missing_provider_env("vault", ["PANDA_VAULT_AUTH_METHOD"])
+
+        credentials.vault_url = url
+        credentials.vault_auth_method = method
+        credentials.vault_mount = env.get("PANDA_VAULT_MOUNT_PATH") or "secret"
+
+        if method == "approle":
+            absent = [v for v in _VAULT_APPROLE_VARS if not env.get(v)]
+            if absent:
+                _missing_provider_env("vault", absent)
+            credentials.vault_role_id = env["PANDA_VAULT_ROLE_ID"]
+            credentials.vault_secret_id = env["PANDA_VAULT_SECRET_ID"]
+            credentials.vault_token_ttl = int(env.get("PANDA_VAULT_TOKEN_TTL") or 3600)
+        elif method == "token":
+            if not env.get("PANDA_VAULT_TOKEN"):
+                _missing_provider_env("vault", ["PANDA_VAULT_TOKEN"])
+            credentials.vault_token = env["PANDA_VAULT_TOKEN"]
+        else:
+            click.echo(
+                f"Error: PANDA_VAULT_AUTH_METHOD must be 'approle' or 'token', "
+                f"not {method!r}."
+            )
+            sys.exit(1)
+
+    elif provider == "infisical":
+        absent = [v for v in _INFISICAL_REQUIRED_VARS if not env.get(v)]
+        if absent:
+            _missing_provider_env("infisical", absent)
+
+        # The site URL and the cache TTL do have safe defaults — one is the
+        # public service, the other a duration — so unlike the credentials
+        # above they are defaulted rather than demanded.
+        credentials.infisical_site_url = (
+            env.get("PANDA_INFISICAL_SITE_URL") or "https://app.infisical.com"
+        )
+        credentials.infisical_client_id = env["PANDA_INFISICAL_CLIENT_ID"]
+        credentials.infisical_client_secret = env["PANDA_INFISICAL_CLIENT_SECRET"]
+        credentials.infisical_project_id = env["PANDA_INFISICAL_PROJECT_ID"]
+        credentials.infisical_environment = env.get("PANDA_INFISICAL_ENVIRONMENT") or "dev"
+        credentials.infisical_cache_ttl = int(env.get("PANDA_INFISICAL_CACHE_TTL") or 300)
+
+
+def _run_quick_init(
+    token: Optional[str],
+    kid: str,
+    skip_key_gen: bool = False,
+    provider: str = "local",
+) -> None:
+    """Non-interactive init: one provider, one key, no prompts.
 
     Mirrors `--quick` in panda-node, panda-php and panda-go. The token gate
     here is **fail-closed with no override**: the wizard can offer
@@ -342,16 +462,22 @@ def _run_quick_init(token: Optional[str], kid: str, skip_key_gen: bool = False) 
 
     kid = (kid or "").strip() or "default-key"
 
-    credentials = PandaCredentials(token=token, provider="local", default_kid=kid)
+    credentials = PandaCredentials(token=token, provider=provider, default_kid=kid)
 
     env_var_name = ""
-    if not skip_key_gen:
-        click.echo(f"Generating local key for: {kid}")
-        env_var_name = _write_local_key(kid)
+    if provider == "local":
+        if not skip_key_gen:
+            click.echo(f"Generating local key for: {kid}")
+            env_var_name = _write_local_key(kid)
+    else:
+        # Nothing is generated here, and `--skip-key-gen` is not needed to say
+        # so. A Vault or Infisical key is provisioned by the secret manager; a
+        # local key written "for" it would be a second key that nothing reads.
+        _apply_provider_env(credentials, provider)
 
     write_credentials(credentials)
 
-    if not skip_key_gen:
+    if provider == "local" and not skip_key_gen:
         click.echo(f"✓ Key written to .env as {env_var_name}")
         click.echo("⚠️  IMPORTANT: Store .env securely and never commit it to version control!")
     click.echo(f"\n✓ PANDA initialized with {credentials.provider} provider")
@@ -364,7 +490,13 @@ def _run_quick_init(token: Optional[str], kid: str, skip_key_gen: bool = False) 
 @cli.command()
 @click.argument("kid", required=False)
 @click.option("--description", help="Key description")
-def generate(kid: Optional[str], description: Optional[str]):
+@click.option(
+    "--provider",
+    type=click.Choice(["local", "vault", "infisical"]),
+    default=None,
+    help="Provider to store the key in. Defaults to the one 'init' recorded.",
+)
+def generate(kid: Optional[str], description: Optional[str], provider: Optional[str]):
     """Generate a new encryption key."""
     credentials = read_credentials()
     if not credentials:
@@ -384,6 +516,12 @@ def generate(kid: Optional[str], description: Optional[str]):
     if not re.match(r"^[a-zA-Z0-9_-]+$", kid):
         click.echo("Error: Key ID must contain only alphanumeric characters, hyphens, and underscores")
         sys.exit(1)
+
+    # The override, applied before the branch below rather than inside it.
+    # panda-node called this `--keystore`; one concept under two names is two
+    # definitions of it, and cli-flags.md pins --provider.
+    if provider:
+        credentials.provider = provider
 
     click.echo(f"Generating key for: {kid}")
 

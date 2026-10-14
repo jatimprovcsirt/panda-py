@@ -596,3 +596,179 @@ class TestConsoleEncoding:
         assert proc.returncode == 0, proc.stderr
         assert "UnicodeEncodeError" not in proc.stderr
         assert (tmp_path / ".env").exists(), "the command died partway through"
+
+
+class TestQuickModeProviderSelection:
+    """`--provider` on the non-interactive path.
+
+    panda-node had this flag and the other three did not, so `init --quick`
+    could only ever configure a local provider here: Vault and Infisical were
+    unreachable from a CI pipeline in three of the four SDKs. The flag set is
+    pinned in panda-spec/cli-flags.md and checked by verify_interop.js.
+
+    The names of the variables are read from the module's own tuples rather
+    than written out again. A test that restates the rule asserts its own copy
+    of it — which is how the token pattern's second copy survived a whole
+    release here.
+    """
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    @pytest.fixture
+    def temp_dir(self):
+        temp_path = Path(tempfile.mkdtemp())
+        yield temp_path
+        shutil.rmtree(temp_path)
+
+    @pytest.fixture(autouse=True)
+    def clear_provider_env(self, monkeypatch):
+        """Every provider variable removed, so each test states its own."""
+        from panda.cli import commands
+
+        for name in (
+            commands._VAULT_REQUIRED_VARS
+            + commands._VAULT_APPROLE_VARS
+            + commands._INFISICAL_REQUIRED_VARS
+        ):
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.delenv("PANDA_VAULT_AUTH_METHOD", raising=False)
+        monkeypatch.delenv("PANDA_VAULT_TOKEN", raising=False)
+
+    LIVE = "panda_live_" + "a" * 48
+
+    def run(self, runner, temp_dir, argv):
+        with patch("pathlib.Path.cwd", return_value=temp_dir):
+            return runner.invoke(cli, argv, input="")
+
+    def credentials(self, temp_dir):
+        return json.loads((temp_dir / PANDA_DIR_NAME / "credentials").read_text())
+
+    def test_vault_without_its_variables_fails_closed(self, runner, temp_dir, monkeypatch):
+        """Fail closed, like the token gate: this path has nobody to ask."""
+        result = self.run(
+            runner, temp_dir, ["init", "--quick", "--token", self.LIVE, "--provider", "vault"]
+        )
+
+        assert result.exit_code == 1
+        assert "PANDA_VAULT_URL" in result.output
+        assert not (temp_dir / PANDA_DIR_NAME).exists(), "wrote a configuration it could not complete"
+
+    def test_vault_records_an_approle_configuration(self, runner, temp_dir, monkeypatch):
+        monkeypatch.setenv("PANDA_VAULT_URL", "https://vault.example:8200")
+        monkeypatch.setenv("PANDA_VAULT_ROLE_ID", "role-1")
+        monkeypatch.setenv("PANDA_VAULT_SECRET_ID", "secret-1")
+
+        result = self.run(
+            runner, temp_dir, ["init", "--quick", "--token", self.LIVE, "--provider", "vault"]
+        )
+
+        assert result.exit_code == 0, result.output
+        creds = self.credentials(temp_dir)
+        assert creds["provider"] == "vault"
+        assert creds["vault_url"] == "https://vault.example:8200"
+        assert creds["vault_auth_method"] == "approle"
+        assert creds["vault_role_id"] == "role-1"
+        assert creds["vault_secret_id"] == "secret-1"
+
+    def test_vault_infers_token_authentication(self, runner, temp_dir, monkeypatch):
+        """Asked for nothing it has already been told."""
+        monkeypatch.setenv("PANDA_VAULT_URL", "https://vault.example:8200")
+        monkeypatch.setenv("PANDA_VAULT_TOKEN", "hvs.token")
+
+        result = self.run(
+            runner, temp_dir, ["init", "--quick", "--token", self.LIVE, "--provider", "vault"]
+        )
+
+        assert result.exit_code == 0, result.output
+        creds = self.credentials(temp_dir)
+        assert creds["vault_auth_method"] == "token"
+        assert creds["vault_token"] == "hvs.token"
+
+    def test_vault_rejects_an_unknown_auth_method(self, runner, temp_dir, monkeypatch):
+        monkeypatch.setenv("PANDA_VAULT_URL", "https://vault.example:8200")
+        monkeypatch.setenv("PANDA_VAULT_AUTH_METHOD", "kerberos")
+
+        result = self.run(
+            runner, temp_dir, ["init", "--quick", "--token", self.LIVE, "--provider", "vault"]
+        )
+
+        assert result.exit_code == 1
+        assert "kerberos" in result.output
+
+    def test_infisical_names_every_variable_it_is_missing(self, runner, temp_dir):
+        from panda.cli import commands
+
+        result = self.run(
+            runner, temp_dir, ["init", "--quick", "--token", self.LIVE, "--provider", "infisical"]
+        )
+
+        assert result.exit_code == 1
+        for name in commands._INFISICAL_REQUIRED_VARS:
+            assert name in result.output, f"{name} not named in the refusal"
+
+    def test_infisical_records_its_configuration(self, runner, temp_dir, monkeypatch):
+        monkeypatch.setenv("PANDA_INFISICAL_CLIENT_ID", "cid")
+        monkeypatch.setenv("PANDA_INFISICAL_CLIENT_SECRET", "csecret")
+        monkeypatch.setenv("PANDA_INFISICAL_PROJECT_ID", "pid")
+
+        result = self.run(
+            runner, temp_dir, ["init", "--quick", "--token", self.LIVE, "--provider", "infisical"]
+        )
+
+        assert result.exit_code == 0, result.output
+        creds = self.credentials(temp_dir)
+        assert creds["provider"] == "infisical"
+        assert creds["infisical_project_id"] == "pid"
+        assert creds["infisical_environment"] == "dev", "the safe default was not applied"
+
+    def test_a_non_local_provider_writes_no_local_key(self, runner, temp_dir, monkeypatch):
+        """A key written 'for' a secret manager is a second key nothing reads."""
+        monkeypatch.setenv("PANDA_VAULT_URL", "https://vault.example:8200")
+        monkeypatch.setenv("PANDA_VAULT_TOKEN", "hvs.token")
+
+        self.run(runner, temp_dir, ["init", "--quick", "--token", self.LIVE, "--provider", "vault"])
+
+        env_file = temp_dir / ".env"
+        assert not env_file.exists() or "PANDA_KEY_" not in env_file.read_text()
+
+    def test_provider_alone_is_non_interactive(self, runner, temp_dir, monkeypatch):
+        """Naming a provider cannot be handed to a wizard, which would ask anyway."""
+        monkeypatch.setenv("PANDA_VAULT_URL", "https://vault.example:8200")
+        monkeypatch.setenv("PANDA_VAULT_TOKEN", "hvs.token")
+
+        result = self.run(
+            runner, temp_dir, ["init", "--token", self.LIVE, "--kid", "k1", "--provider", "vault"]
+        )
+
+        assert result.exit_code == 0, result.output
+        for prompt in ("Select key provider", "Enter choice", "Vault URL", "Default Key ID"):
+            assert prompt not in result.output, f"prompted with: {prompt}"
+
+    def test_provider_local_still_writes_a_key(self, runner, temp_dir):
+        result = self.run(
+            runner, temp_dir, ["init", "--quick", "--token", self.LIVE, "--kid", "k1",
+                               "--provider", "local"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "PANDA_KEY_K1=" in (temp_dir / ".env").read_text()
+
+    def test_no_provider_still_means_local(self, runner, temp_dir):
+        """The default is unchanged for every existing caller."""
+        result = self.run(runner, temp_dir, ["init", "--quick", "--token", self.LIVE, "--kid", "k1"])
+
+        assert result.exit_code == 0, result.output
+        assert self.credentials(temp_dir)["provider"] == "local"
+        assert "PANDA_KEY_K1=" in (temp_dir / ".env").read_text()
+
+    def test_generate_overrides_the_recorded_provider(self, runner, temp_dir, monkeypatch):
+        self.run(runner, temp_dir, ["init", "--quick", "--token", self.LIVE, "--kid", "k1"])
+
+        with patch("pathlib.Path.cwd", return_value=temp_dir):
+            result = runner.invoke(cli, ["generate", "k2", "--provider", "vault"], input="")
+
+        assert result.exit_code == 0, result.output
+        assert "vault kv put" in result.output
+        assert "PANDA_KEY_K2" not in (temp_dir / ".env").read_text(), "stored locally anyway"
