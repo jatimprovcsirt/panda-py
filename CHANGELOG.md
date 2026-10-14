@@ -64,6 +64,7 @@ occurring in this file.
 
 | Version | Date | What it was |
 |---|---|---|
+| `v0.2.6` | 2026-10-14 | The CLI died on a Windows console that cannot encode its output. |
 | `v0.2.5` | 2026-10-14 | `--skip-key-gen`, and releases now go through GitHub Actions with OIDC. **Tagged, awaiting a trusted publisher on PyPI.** |
 | `v0.2.4` | 2026-10-14 | `init` gains `--quick` and `--kid`; it had no non-interactive path at all. **Tagged but never published** — superseded by `0.2.5` before anything was uploaded. |
 | `v0.2.3` | 2026-10-13 | The portal gate did not exist here; `{"valid": "false"}` was read as approval. |
@@ -137,6 +138,32 @@ history is more useful than a tidy tag list.
 `pyproject.toml` by hand.** Nothing enforces it, which is how the two drifted
 apart in the first place. A test that reads both and compares them would be
 worth adding.
+
+## What 0.2.6 fixes
+
+**`panda init` did not run on a default Windows console.** Nearly every message
+this CLI prints begins with a tick or a warning sign, and on a console whose
+encoding is cp1252 `print` raises:
+
+    UnicodeEncodeError: 'charmap' codec can't encode character '✓'
+
+The command died at its first success line — after writing some of its files
+and before finishing, which is the worst place to stop. The three other SDKs
+were unaffected: Go, Node and PHP write UTF-8 bytes and never ask an encoding
+layer's permission.
+
+For a project aimed at government developers, Windows is the likely case, and
+the workflow the documentation opens with is exactly the one that failed.
+
+`main()` now reconfigures stdout and stderr to UTF-8 with `errors="replace"`.
+Not `errors="replace"` alone: that would keep the console's encoding and lose
+the tick on every Windows console, including the ones that can render it.
+Streams without a `reconfigure` — a test runner's capture object, a caller's
+`StringIO` — are left untouched.
+
+Reproduced in the test suite by forcing the encoding rather than mocking it,
+because the failure is in the encoding layer and a mock would replace the thing
+under test.
 
 ## What 0.2.5 adds
 
