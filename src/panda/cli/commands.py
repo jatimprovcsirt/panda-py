@@ -637,8 +637,41 @@ def _now_iso() -> str:
     return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
 
+def _configure_output_encoding() -> None:
+    """Stop the CLI dying on a console that cannot encode its own output.
+
+    Nearly every message this tool prints starts with a tick or a warning sign
+    — ✓ and ⚠️ — and on a console whose encoding is cp1252, printing one raises
+    UnicodeEncodeError and kills the command outright. `panda init` therefore
+    failed at its first success message on a default Windows terminal: the
+    platform this project's users are most likely to be on, running the one
+    workflow the documentation opens with.
+
+    UTF-8 with errors="replace", rather than errors="replace" alone. Where the
+    terminal can render the tick it now does; where it cannot, one character
+    degrades to a placeholder and the rest of the message still arrives. The
+    alternative — keeping the console's encoding and replacing — loses the tick
+    on every Windows console, including the ones that could have shown it.
+
+    Streams that are not a TextIOWrapper have no `reconfigure` and are left
+    alone, which is what keeps this from touching a test runner's capture
+    object.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            # A detached stream, or one that refuses to be reconfigured.
+            # Neither is worth failing a CLI over.
+            pass
+
+
 def main():
     """Main entry point for the CLI."""
+    _configure_output_encoding()
     cli()
 
 

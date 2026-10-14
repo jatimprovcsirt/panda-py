@@ -7,8 +7,11 @@ provider selection, and credential storage.
 
 import pytest
 import json
-import tempfile
+import os
 import shutil
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 from click.testing import CliRunner
@@ -560,3 +563,36 @@ class TestInitSkipKeyGen:
         assert not (temp_dir / ".env").exists()
         creds = json.loads((temp_dir / PANDA_DIR_NAME / "credentials").read_text())
         assert creds["default_kid"] == "my-key"
+
+
+class TestConsoleEncoding:
+    """The CLI must not die on a console that cannot encode its output.
+
+    Almost every message it prints begins with a tick or a warning sign, and on
+    a console whose encoding is cp1252, `print` raises UnicodeEncodeError and
+    takes the command down with it. `panda init` failed at its first success
+    line on a default Windows terminal — the platform these users are most
+    likely to be on, running the workflow the documentation opens with.
+
+    Reproduced here by forcing the encoding rather than by mocking, because the
+    failure is in the encoding layer and a mock would replace the thing under
+    test.
+    """
+
+    def test_init_survives_a_cp1252_stdout(self, tmp_path):
+        env = dict(os.environ)
+        env["PYTHONIOENCODING"] = "cp1252"
+        env["PANDA_SKIP_ONLINE_VALIDATION"] = "1"
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "src")
+
+        proc = subprocess.run(
+            [
+                sys.executable, "-m", "panda.cli.commands", "init",
+                "--quick", "--token", "panda_live_" + "a" * 48, "--kid", "enc-check",
+            ],
+            cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60,
+        )
+
+        assert proc.returncode == 0, proc.stderr
+        assert "UnicodeEncodeError" not in proc.stderr
+        assert (tmp_path / ".env").exists(), "the command died partway through"
