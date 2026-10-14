@@ -425,3 +425,99 @@ class TestInitVaultSpecific:
             content = creds_file.read_text()
             data = json.loads(content)
             assert data["vault_mount"] == "secret"
+
+
+class TestInitQuickMode:
+    """`panda init --quick` — the non-interactive path.
+
+    This SDK had none until now. panda-node, panda-php and panda-go all had
+    `--quick`, so the documented one-liner for a CI pipeline or a Dockerfile
+    was wrong for exactly one of the four implementations — and the CLI guide
+    papered over it by documenting a different command per language.
+
+    Every test here closes stdin (`input=""`). A prompt on this path is a
+    hang, not a failure, and a hang would be the wrong outcome in CI.
+    """
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    @pytest.fixture
+    def temp_dir(self):
+        temp_path = Path(tempfile.mkdtemp())
+        yield temp_path
+        shutil.rmtree(temp_path)
+
+    LIVE = "panda_live_" + "a" * 48
+
+    def test_quick_writes_the_kid_it_was_given(self, runner, temp_dir):
+        with patch("pathlib.Path.cwd", return_value=temp_dir):
+            result = runner.invoke(
+                cli, ["init", "--quick", "--token", self.LIVE, "--kid", "my-app-key-1"], input=""
+            )
+
+        assert result.exit_code == 0, result.output
+        creds = json.loads((temp_dir / PANDA_DIR_NAME / "credentials").read_text())
+        assert creds["default_kid"] == "my-app-key-1"
+        assert "PANDA_KEY_MY_APP_KEY_1=" in (temp_dir / ".env").read_text()
+
+    def test_quick_defaults_the_kid(self, runner, temp_dir):
+        with patch("pathlib.Path.cwd", return_value=temp_dir):
+            result = runner.invoke(cli, ["init", "--quick", "--token", self.LIVE], input="")
+
+        assert result.exit_code == 0, result.output
+        creds = json.loads((temp_dir / PANDA_DIR_NAME / "credentials").read_text())
+        assert creds["default_kid"] == "default-key"
+
+    def test_quick_prompts_for_nothing(self, runner, temp_dir):
+        """No prompt may appear — the wizard's questions must be skipped."""
+        with patch("pathlib.Path.cwd", return_value=temp_dir):
+            result = runner.invoke(cli, ["init", "--quick", "--token", self.LIVE], input="")
+
+        assert result.exit_code == 0, result.output
+        for prompt in ("Select key provider", "Enter choice", "Default Key ID", "Vault URL"):
+            assert prompt not in result.output, f"prompted with: {prompt}"
+
+    def test_quick_without_a_token_fails(self, runner, temp_dir):
+        """Fail closed rather than prompting — there is nobody to prompt."""
+        with patch("pathlib.Path.cwd", return_value=temp_dir):
+            result = runner.invoke(cli, ["init", "--quick"], input="")
+
+        assert result.exit_code == 1
+        assert "requires a token" in result.output
+
+    def test_quick_with_a_malformed_token_fails_without_asking(self, runner, temp_dir):
+        """The wizard offers "Continue anyway?". This path cannot, and must not hang."""
+        with patch("pathlib.Path.cwd", return_value=temp_dir):
+            result = runner.invoke(cli, ["init", "--quick", "--token", "nonsense"], input="")
+
+        assert result.exit_code == 1
+        assert "Continue anyway?" not in result.output
+        assert "token gate failed" in result.output
+
+    def test_quick_produces_no_configuration_when_the_gate_fails(self, runner, temp_dir):
+        with patch("pathlib.Path.cwd", return_value=temp_dir):
+            runner.invoke(cli, ["init", "--quick", "--token", "nonsense"], input="")
+
+        assert not (temp_dir / PANDA_DIR_NAME).exists()
+        assert not (temp_dir / ".env").exists()
+
+    def test_quick_reads_the_token_from_the_environment(self, runner, temp_dir, monkeypatch):
+        """So the token need not appear in shell history or the process list."""
+        monkeypatch.setenv("PANDA_ACCESS_TOKEN", self.LIVE)
+        with patch("pathlib.Path.cwd", return_value=temp_dir):
+            result = runner.invoke(cli, ["init", "--quick"], input="")
+
+        assert result.exit_code == 0, result.output
+        assert (temp_dir / PANDA_DIR_NAME / "credentials").exists()
+
+    def test_quick_writes_the_same_files_as_the_wizard(self, runner, temp_dir):
+        """Both paths share one writer, so a .env does not depend on the command."""
+        with patch("pathlib.Path.cwd", return_value=temp_dir):
+            runner.invoke(cli, ["init", "--quick", "--token", self.LIVE, "--kid", "k"], input="")
+
+        env = (temp_dir / ".env").read_text()
+        assert "PANDA_KEY_K=" in env
+        assert "PANDA_DEFAULT_KID=k" in env
+        assert (temp_dir / ".env.example").exists()

@@ -131,8 +131,19 @@ def cli():
 
 @cli.command()
 @click.option("--token", help="PANDA access token")
+@click.option(
+    "--kid",
+    default="default-key",
+    show_default=True,
+    help="Key Identifier (quick mode)",
+)
+@click.option(
+    "--quick",
+    is_flag=True,
+    help="Skip wizard, use quick setup with local provider",
+)
 @click.option("--reinit", is_flag=True, help="Force re-initialization")
-def init(token: Optional[str], reinit: bool):
+def init(token: Optional[str], kid: str, quick: bool, reinit: bool):
     """Initialize PANDA in your project."""
     panda_dir = get_panda_dir()
 
@@ -141,6 +152,16 @@ def init(token: Optional[str], reinit: bool):
         click.echo("⚠️  PANDA already initialized in this project.")
         click.echo("Use --reinit to force re-initialization.")
         click.echo("Run 'panda status' to see current configuration.")
+        return
+
+    # Non-interactive path. This SDK had none: `panda init` always prompted
+    # for the key provider and the key identifier, so there was no one-liner
+    # for a CI pipeline, a Dockerfile or a provisioning script — while
+    # panda-node, panda-php and panda-go all had `--quick`. A documented
+    # workflow that works in three SDKs and not the fourth is a workflow that
+    # is wrong for whoever picked this one.
+    if quick:
+        _run_quick_init(token, kid)
         return
 
     # Get token
@@ -243,27 +264,85 @@ def init(token: Optional[str], reinit: bool):
     # Generate key for local provider
     if credentials.provider == "local":
         click.echo(f"\nGenerating local key for: {default_kid}")
-        key_bytes = secrets.token_bytes(32)
-        key_base64 = base64.b64encode(key_bytes).decode("ascii")
-
-        # Write to .env
-        env_file = Path.cwd() / ".env"
-        env_example = Path.cwd() / ".env.example"
-
-        normalized_kid = default_kid.replace("-", "_").replace(".", "_").upper()
-        env_var_name = f"PANDA_KEY_{normalized_kid}"
-
-        for path in [env_file, env_example]:
-            with open(path, "a" if path.exists() else "w", encoding="utf-8") as f:
-                value = key_base64 if path == env_file else ""
-                f.write(f"{env_var_name}={value}\n")
-                f.write(f"PANDA_DEFAULT_KID={default_kid if path == env_file else ''}\n")
-
+        env_var_name = _write_local_key(default_kid)
         click.echo(f"✓ Key written to .env as {env_var_name}")
         click.echo("⚠️  IMPORTANT: Store .env securely and never commit it to version control!")
 
     # Save credentials
     write_credentials(credentials)
+    click.echo(f"\n✓ PANDA initialized with {credentials.provider} provider")
+    click.echo(f"✓ Configuration saved to {PANDA_DIR_NAME}/")
+    click.echo("\nNext steps:")
+    click.echo("  - Use 'panda generate <kid>' to create additional keys")
+    click.echo("  - Use 'panda status' to verify configuration")
+
+
+def _write_local_key(kid: str) -> str:
+    """Generate a 32-byte key and write it to .env and .env.example.
+
+    Shared by the wizard and quick mode rather than written twice. The two
+    paths producing slightly different files — one with PANDA_DEFAULT_KID and
+    one without, one appending and one truncating — is how a project ends up
+    with a `.env` whose shape depends on which command created it.
+
+    Returns the environment variable name the key was written under.
+    """
+    key_base64 = base64.b64encode(secrets.token_bytes(32)).decode("ascii")
+
+    env_file = Path.cwd() / ".env"
+    env_example = Path.cwd() / ".env.example"
+
+    normalized_kid = kid.replace("-", "_").replace(".", "_").upper()
+    env_var_name = f"PANDA_KEY_{normalized_kid}"
+
+    for path in [env_file, env_example]:
+        with open(path, "a" if path.exists() else "w", encoding="utf-8") as f:
+            value = key_base64 if path == env_file else ""
+            f.write(f"{env_var_name}={value}\n")
+            f.write(f"PANDA_DEFAULT_KID={kid if path == env_file else ''}\n")
+
+    return env_var_name
+
+
+def _run_quick_init(token: Optional[str], kid: str) -> None:
+    """Non-interactive init: local provider, one key, no prompts.
+
+    Mirrors `--quick` in panda-node, panda-php and panda-go. The token gate
+    here is **fail-closed with no override**: the wizard can offer
+    "Continue anyway?" because a person is there to answer, and this path
+    cannot ask.
+    """
+    token = token or os.environ.get("PANDA_ACCESS_TOKEN", "")
+    if not token:
+        click.echo(
+            "Error: --quick requires a token.\n"
+            "Pass --token <value> or set the PANDA_ACCESS_TOKEN environment variable."
+        )
+        sys.exit(1)
+
+    try:
+        validate_token(token)
+    except InvalidTokenError as exc:
+        click.echo(f"Error: token gate failed: {exc}")
+        sys.exit(1)
+
+    if is_demo_token(token) and not is_local_environment():
+        click.echo("⚠️  WARNING: You are using the static DEMO TOKEN outside a local development environment.")
+        click.echo("Please register your application at the PANDA portal to obtain a per-application live token.")
+
+    click.echo("✓ Token validated")
+
+    kid = (kid or "").strip() or "default-key"
+
+    credentials = PandaCredentials(token=token, provider="local", default_kid=kid)
+
+    click.echo(f"Generating local key for: {kid}")
+    env_var_name = _write_local_key(kid)
+
+    write_credentials(credentials)
+
+    click.echo(f"✓ Key written to .env as {env_var_name}")
+    click.echo("⚠️  IMPORTANT: Store .env securely and never commit it to version control!")
     click.echo(f"\n✓ PANDA initialized with {credentials.provider} provider")
     click.echo(f"✓ Configuration saved to {PANDA_DIR_NAME}/")
     click.echo("\nNext steps:")
