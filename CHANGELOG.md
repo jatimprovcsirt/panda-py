@@ -56,7 +56,7 @@ copy of it.
 
 ## Released
 
-`pyproject.toml` and `src/panda/__init__.py` both declare `0.2.3`, and `v0.2.3`
+`pyproject.toml` and `src/panda/__init__.py` both declare `0.2.5`, and `v0.2.5`
 is the most recent tag. All three agree, which is the rule this file exists to
 enforce. While `0.2.3` was being cut this paragraph still said `0.2.1`, having
 not been updated for `0.2.2` — which is the failure this file exists to catch,
@@ -64,7 +64,8 @@ occurring in this file.
 
 | Version | Date | What it was |
 |---|---|---|
-| `v0.2.4` | 2026-10-14 | `init` gains `--quick` and `--kid`; it had no non-interactive path at all. |
+| `v0.2.5` | 2026-10-14 | `--skip-key-gen`, and releases now go through GitHub Actions with OIDC. **Tagged, awaiting a trusted publisher on PyPI.** |
+| `v0.2.4` | 2026-10-14 | `init` gains `--quick` and `--kid`; it had no non-interactive path at all. **Tagged but never published** — superseded by `0.2.5` before anything was uploaded. |
 | `v0.2.3` | 2026-10-13 | The portal gate did not exist here; `{"valid": "false"}` was read as approval. |
 | `v0.2.2` | 2026-10-13 | Two defects found by the test suite, which had been red since before `0.2.1` and was read as test noise. |
 | `v0.2.1` | 2026-10-13 | First release since `0.1.0` to reach PyPI. `panda.__version__` no longer reports a number that matches nothing. |
@@ -79,7 +80,7 @@ The tags run `v0.1.5`, `v0.4.2`, `v0.1.6`, `v0.2.0` in date order. The version
 was re-based mid-series, so `v0.1.6` is *newer* than `v0.4.2` and `v0.2.0` is
 newer than both. The numbers do not tell you the order; the dates do.
 
-`v0.2.3` is the version to build on.
+`v0.2.5` is the version to build on.
 
 ## What 0.2.2 fixed
 
@@ -136,6 +137,44 @@ history is more useful than a tidy tag list.
 `pyproject.toml` by hand.** Nothing enforces it, which is how the two drifted
 apart in the first place. A test that reads both and compares them would be
 worth adding.
+
+## What 0.2.5 adds
+
+### `--skip-key-gen`
+
+panda-php and panda-go had it; panda-node gained it in the same batch. A flag
+present in three SDKs and absent from the fourth is the defect this whole
+sequence started from. It applies to the wizard as well as to quick mode,
+matching panda-go, which honours it on both paths.
+
+### A release workflow, and CI
+
+**This repository had no CI at all** — no `.github` directory, the only one of
+the six without one. Both CLI defects found this week were found by running the
+binaries: panda-php's `init` could not start, panda-go's `--kid` was accepted
+and discarded. Nothing here ran them.
+
+`ci.yml` tests on 3.10 and 3.12, checks the declared versions, and — the cheap
+guard against the panda-php failure mode — runs the CLI and asserts its flags
+exist. Every unit test passed there while the command could not start.
+
+`release.yml` publishes with OIDC trusted publishing. No token, and the manual
+`twine upload` is gone: it was the last release step in this project that
+needed a human.
+
+PyPI is the one registry that cannot be corrected afterwards — a version
+number, once uploaded, is never freed — so the release workflow checks more
+than the npm one does. `scripts/check_version.py` fails unless the tag,
+`pyproject.toml` and `src/panda/__init__.py` agree, which they have not always
+done here. The final step before publishing installs the built wheel into an
+empty virtualenv and runs it, asserting the version it reports, `init --quick
+--kid`, and `init --quick --skip-key-gen`. That is the check that would have
+caught panda-node 0.5.3 reporting itself as 0.1.0.
+
+**`v0.2.4` is tagged and was never published.** `--skip-key-gen` and the
+workflows landed after the tag and before anything was uploaded, so `0.2.5`
+carries them. Nothing was burned — PyPI has never seen `0.2.4`, and the number
+remains free, which is not true once an upload succeeds.
 
 ## What 0.2.4 fixes
 
