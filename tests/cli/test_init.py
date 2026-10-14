@@ -521,3 +521,42 @@ class TestInitQuickMode:
         assert "PANDA_KEY_K=" in env
         assert "PANDA_DEFAULT_KID=k" in env
         assert (temp_dir / ".env.example").exists()
+
+    def test_quick_skip_key_gen_writes_no_key(self, runner, temp_dir):
+        """`--skip-key-gen` exists in panda-php and panda-go; this SDK lacked it."""
+        with patch("pathlib.Path.cwd", return_value=temp_dir):
+            result = runner.invoke(
+                cli, ["init", "--quick", "--token", self.LIVE, "--skip-key-gen"], input=""
+            )
+
+        assert result.exit_code == 0, result.output
+        assert not (temp_dir / ".env").exists()
+        # The identifier is still recorded — only the key generation is skipped.
+        creds = json.loads((temp_dir / PANDA_DIR_NAME / "credentials").read_text())
+        assert creds["default_kid"] == "default-key"
+
+
+class TestInitSkipKeyGen:
+    """`--skip-key-gen` applies to the wizard too, as it does in panda-go."""
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    @pytest.fixture
+    def temp_dir(self):
+        temp_path = Path(tempfile.mkdtemp())
+        yield temp_path
+        shutil.rmtree(temp_path)
+
+    def test_wizard_skip_key_gen_writes_no_key(self, runner, temp_dir):
+        token = "panda_live_" + "a" * 48
+        with patch("pathlib.Path.cwd", return_value=temp_dir):
+            result = runner.invoke(
+                cli, ["init", "--token", token, "--skip-key-gen"], input="1\nmy-key\n"
+            )
+
+        assert result.exit_code == 0, result.output
+        assert not (temp_dir / ".env").exists()
+        creds = json.loads((temp_dir / PANDA_DIR_NAME / "credentials").read_text())
+        assert creds["default_kid"] == "my-key"

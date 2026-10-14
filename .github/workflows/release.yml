@@ -1,0 +1,92 @@
+name: Release
+
+# Triggered by a version tag, e.g. `git tag v0.2.4 && git push origin v0.2.4`.
+#
+# This replaced a manual `twine upload`. It is the last release step in this
+# project that needed a human, and the one with the least room for error:
+# **PyPI never frees a version number.** npm and Packagist can be corrected;
+# an upload here cannot be. A number that goes out wrong is gone.
+#
+# So everything below runs before the upload, and the last step installs the
+# built wheel into an empty virtualenv and runs it — the check that would have
+# caught panda-node 0.5.3 reporting itself as 0.1.0, and panda-php's `init`
+# being unable to start at all.
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  pypi-publish:
+    name: Verify and publish to PyPI
+    runs-on: ubuntu-latest
+
+    # Must match the environment configured on the PyPI trusted publisher.
+    # Optional there and here, but it is what lets the publisher be scoped to
+    # releases only rather than to every workflow in the repository.
+    environment: pypi
+
+    # Required for OIDC. There is no token: GitHub mints a short-lived
+    # credential for this run, scoped to this repository and this workflow
+    # file, and PyPI exchanges it for a one-time upload authorisation.
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install -e ".[dev]" build
+
+      # Tag, pyproject.toml and __init__.py must all say the same number.
+      # Failing here costs a re-tag; failing after the upload is impossible to
+      # undo.
+      - name: Declared versions agree
+        run: python scripts/check_version.py
+
+      - name: Test
+        run: python -m pytest -q
+
+      - name: Build
+        run: python -m build
+
+      # The step that catches "works in the repository, broken as a package".
+      # A wheel can build cleanly and still be uninstallable, or install and
+      # report the wrong version, or have a CLI entry point that does not run.
+      # None of that is visible from inside the source tree.
+      - name: Install the built wheel and run it
+        run: |
+          set -euo pipefail
+
+          python -m venv /tmp/verify
+          /tmp/verify/bin/pip install --quiet dist/*.whl
+
+          echo "--- version ---"
+          /tmp/verify/bin/panda --version
+
+          echo "--- the version it reports is the one declared ---"
+          DECLARED="$(python -c "import re,pathlib; print(re.search(r'^version\s*=\s*\"([^\"]+)\"', pathlib.Path('pyproject.toml').read_text(), re.M).group(1))")"
+          REPORTED="$(/tmp/verify/bin/panda --version | awk '{print $NF}')"
+          if [ "$DECLARED" != "$REPORTED" ]; then
+            echo "::error::the wheel reports $REPORTED but pyproject.toml says $DECLARED"
+            exit 1
+          fi
+
+          echo "--- init is non-interactive under --quick, with stdin closed ---"
+          mkdir -p /tmp/verify-run && cd /tmp/verify-run
+          PANDA_SKIP_ONLINE_VALIDATION=1 /tmp/verify/bin/panda init \
+            --quick --token "panda_live_$(printf 'a%.0s' $(seq 1 48))" --kid ci-check </dev/null
+          grep -q '^PANDA_KEY_CI_CHECK=' .env
+
+          echo "--- and --skip-key-gen writes no key ---"
+          cd /tmp && mkdir -p /tmp/verify-skip && cd /tmp/verify-skip
+          PANDA_SKIP_ONLINE_VALIDATION=1 /tmp/verify/bin/panda init \
+            --quick --token "panda_live_$(printf 'a%.0s' $(seq 1 48))" --skip-key-gen </dev/null
+          test ! -f .env
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

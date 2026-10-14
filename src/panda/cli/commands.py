@@ -143,7 +143,12 @@ def cli():
     help="Skip wizard, use quick setup with local provider",
 )
 @click.option("--reinit", is_flag=True, help="Force re-initialization")
-def init(token: Optional[str], kid: str, quick: bool, reinit: bool):
+@click.option(
+    "--skip-key-gen",
+    is_flag=True,
+    help="Skip first key generation",
+)
+def init(token: Optional[str], kid: str, quick: bool, reinit: bool, skip_key_gen: bool):
     """Initialize PANDA in your project."""
     panda_dir = get_panda_dir()
 
@@ -161,7 +166,7 @@ def init(token: Optional[str], kid: str, quick: bool, reinit: bool):
     # workflow that works in three SDKs and not the fourth is a workflow that
     # is wrong for whoever picked this one.
     if quick:
-        _run_quick_init(token, kid)
+        _run_quick_init(token, kid, skip_key_gen)
         return
 
     # Get token
@@ -261,8 +266,11 @@ def init(token: Optional[str], kid: str, quick: bool, reinit: bool):
     default_kid = click.prompt("Default Key ID", default="default-key")
     credentials.default_kid = default_kid
 
-    # Generate key for local provider
-    if credentials.provider == "local":
+    # Generate key for local provider. `--skip-key-gen` applies here as it
+    # does in panda-go and panda-php, which honour it on both paths — a flag
+    # that works in the wizard and not in quick mode, or the reverse, is a
+    # difference nobody discovers until they need it.
+    if credentials.provider == "local" and not skip_key_gen:
         click.echo(f"\nGenerating local key for: {default_kid}")
         env_var_name = _write_local_key(default_kid)
         click.echo(f"✓ Key written to .env as {env_var_name}")
@@ -304,7 +312,7 @@ def _write_local_key(kid: str) -> str:
     return env_var_name
 
 
-def _run_quick_init(token: Optional[str], kid: str) -> None:
+def _run_quick_init(token: Optional[str], kid: str, skip_key_gen: bool = False) -> None:
     """Non-interactive init: local provider, one key, no prompts.
 
     Mirrors `--quick` in panda-node, panda-php and panda-go. The token gate
@@ -336,13 +344,16 @@ def _run_quick_init(token: Optional[str], kid: str) -> None:
 
     credentials = PandaCredentials(token=token, provider="local", default_kid=kid)
 
-    click.echo(f"Generating local key for: {kid}")
-    env_var_name = _write_local_key(kid)
+    env_var_name = ""
+    if not skip_key_gen:
+        click.echo(f"Generating local key for: {kid}")
+        env_var_name = _write_local_key(kid)
 
     write_credentials(credentials)
 
-    click.echo(f"✓ Key written to .env as {env_var_name}")
-    click.echo("⚠️  IMPORTANT: Store .env securely and never commit it to version control!")
+    if not skip_key_gen:
+        click.echo(f"✓ Key written to .env as {env_var_name}")
+        click.echo("⚠️  IMPORTANT: Store .env securely and never commit it to version control!")
     click.echo(f"\n✓ PANDA initialized with {credentials.provider} provider")
     click.echo(f"✓ Configuration saved to {PANDA_DIR_NAME}/")
     click.echo("\nNext steps:")
