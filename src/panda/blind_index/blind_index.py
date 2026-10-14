@@ -34,6 +34,24 @@ class BlindIndexer:
     NORMALIZATION_NONE = "none"
     NORMALIZATION_RAW = "raw"
 
+    # Unicode White_Space, as pinned in panda-spec/blind-index-format.md.
+    #
+    # str.strip() with no argument uses str.isspace(), which is a different
+    # set: it also strips U+001C-U+001F, the ASCII information separators.
+    # Those are control characters, not whitespace, and panda-php and panda-go
+    # leave them alone — so a value carrying one indexed differently here.
+    #
+    # `re` cannot help: \s uses the same predicate, so re.sub(r"^\s+", ...)
+    # carries the identical bug.
+    _WHITE_SPACE = (
+        "\t\n\v\f\r "          # ASCII
+        "\x85\xa0"                # NEL, NBSP
+        "\u1680"                   # OGHAM SPACE MARK
+        "\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a"
+        "\u2028\u2029"            # LINE / PARAGRAPH SEPARATOR
+        "\u202f\u205f\u3000"     # NARROW NBSP, MMSP, IDEOGRAPHIC SPACE
+    )
+
     @staticmethod
     def normalize(plaintext: str, normalization: str) -> str:
         """
@@ -68,11 +86,11 @@ class BlindIndexer:
         elif mode in (BlindIndexer.NORMALIZATION_LOWERCASE,
                      BlindIndexer.NORMALIZATION_EMAIL):
             # Lowercase and trim whitespace
-            return plaintext.strip().lower()
+            return plaintext.strip(BlindIndexer._WHITE_SPACE).lower()
 
         elif mode == BlindIndexer.NORMALIZATION_TRIM:
             # Only trim whitespace
-            return plaintext.strip()
+            return plaintext.strip(BlindIndexer._WHITE_SPACE)
 
         elif mode in (BlindIndexer.NORMALIZATION_NONE,
                      BlindIndexer.NORMALIZATION_RAW):
