@@ -8,7 +8,7 @@ Field-level encryption and masking for sensitive personal data.
 # It said 0.1.0 while pyproject.toml said 0.2.0, so anything reading
 # panda.__version__ at runtime got a number matching neither the tag nor
 # the published release.
-__version__ = "0.2.6"
+__version__ = "0.2.7"
 
 from .crypto import (
     FieldCipher,

@@ -56,16 +56,22 @@ copy of it.
 
 ## Released
 
-`pyproject.toml` and `src/panda/__init__.py` both declare `0.2.5`, and `v0.2.5`
+`pyproject.toml` and `src/panda/__init__.py` both declare `0.2.7`, and `v0.2.7`
 is the most recent tag. All three agree, which is the rule this file exists to
-enforce. While `0.2.3` was being cut this paragraph still said `0.2.1`, having
-not been updated for `0.2.2` — which is the failure this file exists to catch,
-occurring in this file.
+enforce — `scripts/check_version.py` now fails the release unless they do.
+
+The paragraph above is itself the instance of the failure it describes. While
+`0.2.3` was being cut it still said `0.2.1`; while `0.2.7` was being cut it
+still said `0.2.5`, having not been updated for `0.2.6`. Twice, in the text
+warning about it. The check script is the answer to that, and the form matters:
+a paragraph cannot enforce itself, which is exactly why the same defect keeps
+appearing in files like this one.
 
 | Version | Date | What it was |
 |---|---|---|
+| `v0.2.7` | 2026-10-14 | The blind index trimmed Python's whitespace set, not the specification's. |
 | `v0.2.6` | 2026-10-14 | The CLI died on a Windows console that cannot encode its output. |
-| `v0.2.5` | 2026-10-14 | `--skip-key-gen`, and releases now go through GitHub Actions with OIDC. **Tagged, awaiting a trusted publisher on PyPI.** |
+| `v0.2.5` | 2026-10-14 | `--skip-key-gen`, and releases now go through GitHub Actions with OIDC. |
 | `v0.2.4` | 2026-10-14 | `init` gains `--quick` and `--kid`; it had no non-interactive path at all. **Tagged but never published** — superseded by `0.2.5` before anything was uploaded. |
 | `v0.2.3` | 2026-10-13 | The portal gate did not exist here; `{"valid": "false"}` was read as approval. |
 | `v0.2.2` | 2026-10-13 | Two defects found by the test suite, which had been red since before `0.2.1` and was read as test noise. |
@@ -138,6 +144,34 @@ history is more useful than a tidy tag list.
 `pyproject.toml` by hand.** Nothing enforces it, which is how the two drifted
 apart in the first place. A test that reads both and compares them would be
 worth adding.
+
+## What 0.2.7 fixes
+
+**The blind index trimmed a different set of characters than the spec says.**
+
+`str.strip()` with no argument uses `str.isspace()`. That is not Unicode
+`White_Space`: it additionally strips `U+001C`-`U+001F`, the ASCII information
+separators, which are control characters rather than whitespace. `panda-php`
+and `panda-go` leave them alone, so a value carrying a trailing `U+001C` — the
+kind of thing that arrives from a paste or an export — indexed differently here
+than in the other SDKs. A blind index that differs between implementations is
+not a lookup that fails loudly; it is a row written by one SDK that the others
+cannot find.
+
+`_WHITE_SPACE` is now written out explicitly and passed to `strip()`. `re` is
+no help, and that is worth knowing before reaching for it: `\s` matches on the
+same predicate as `isspace()`, so `re.sub(r"^\s+", ...)` carries the identical
+bug.
+
+The fix landed with three vectors in `panda-spec` — one for each of `U+0085`,
+`U+001C` and `U+FEFF` — which `verify_interop.js` runs against all four SDKs:
+164 checks, up from 152. Reverting this file's change fails exactly the
+`U+001C` vector and nothing else, which is what makes it a test of this fix
+rather than of the harness.
+
+The submodule pin moves to `panda-spec` `v3`, the tag that carries those
+vectors. A pin left at `v2` would keep passing, and would be passing a smaller
+set of checks than the spec now defines.
 
 ## What 0.2.6 fixes
 
