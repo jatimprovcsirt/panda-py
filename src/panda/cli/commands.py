@@ -20,6 +20,7 @@ import click
 # released — a fourth place the number lived, disagreeing with the other
 # three.
 from .. import __version__
+from ..telemetry import new_encryption_key
 
 from ..crypto import (
     LocalKeyProvider,
@@ -313,7 +314,7 @@ def _write_local_key(kid: str) -> str:
 
     Returns the environment variable name the key was written under.
     """
-    key_base64 = base64.b64encode(secrets.token_bytes(32)).decode("ascii")
+    key_base64 = base64.b64encode(new_encryption_key()).decode("ascii")
 
     env_file = Path.cwd() / ".env"
     env_example = Path.cwd() / ".env.example"
@@ -526,7 +527,7 @@ def generate(kid: Optional[str], description: Optional[str], provider: Optional[
     click.echo(f"Generating key for: {kid}")
 
     # Generate key
-    key_bytes = secrets.token_bytes(32)
+    key_bytes = new_encryption_key()
     key_base64 = base64.b64encode(key_bytes).decode("ascii")
 
     # Store based on provider

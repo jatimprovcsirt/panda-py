@@ -8,7 +8,7 @@ Field-level encryption and masking for sensitive personal data.
 # It said 0.1.0 while pyproject.toml said 0.2.0, so anything reading
 # panda.__version__ at runtime got a number matching neither the tag nor
 # the published release.
-__version__ = "0.2.8"
+__version__ = "0.2.9"
 
 from .crypto import (
     FieldCipher,
@@ -24,7 +24,11 @@ from .crypto import (
 from .masking import Masker, MaskingConfig
 from .blind_index import BlindIndexer
 from .audit import AuditLogger, ConsoleAuditLogger, NullAuditLogger
-from .telemetry import TelemetryClient
+# The telemetry surface is module-level functions, not a client class.
+# TelemetryClient existed so a cipher could hold one and call out from inside a
+# crypto operation; there is no client to hold any more. See
+# panda-spec/telemetry-format.md.
+from .telemetry import backend, count, disabled, flush, report_key, sdk_version
 from .storage import TLSVerifier, MySqlAdapter, PostgresAdapter
 
 __all__ = [
@@ -57,7 +61,12 @@ __all__ = [
     "NullAuditLogger",
 
     # Telemetry
-    "TelemetryClient",
+    "backend",
+    "count",
+    "disabled",
+    "flush",
+    "report_key",
+    "sdk_version",
 
     # Storage
     "TLSVerifier",
